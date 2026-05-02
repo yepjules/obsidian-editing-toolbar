@@ -55,12 +55,14 @@ describe("TextEnhancement.getPlainText", () => {
     // underscore-based italic (`_italic_`), which is intentional — the
     // plain-text regex only targets `*` markers.
     const editor = makeEditor({
-      getSelection: vi.fn(() => "**bold** text"),
+      getSelection: vi.fn(() => "**bold** and _italic_"),
     });
     TextEnhancement.getPlainText(editor as any);
     const copied = writeTextMock.mock.calls[0][0] as string;
     expect(copied).not.toContain("**");
     expect(copied).toContain("bold");
+    // Underscore-based italic is preserved (not stripped by the regex)
+    expect(copied).toContain("_italic_");
   });
 
   it("strips heading markers from copied text", () => {

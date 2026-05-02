@@ -290,14 +290,10 @@ describe("setBackgroundcolor", () => {
     expect(arg).not.toContain("background:#aabbcc");
   });
 
-  it("replaces the content even when the same background color is already set (guard regex has a known limitation)", () => {
-    // The `isAlreadyInSameColor` guard uses `new RegExp(template)` where
-    // `[\s\S]` in the template string literal becomes `[sS]` (backslash is
-    // consumed for the non-escape `\s`/`\S`), so the guard only matches content
-    // consisting solely of the characters `s` and `S`.  For content like
-    // "hello", the guard returns false and the function falls through to the
-    // replacement path (which still produces an identical result when the color
-    // matches).  This test documents that current behaviour.
+  it("does not replace when the same background color is already set", () => {
+    // With the fix to use [\\s\\S] (proper double-escape) in the template
+    // string passed to new RegExp(), the guard correctly identifies that the
+    // text is already wrapped in the same color and returns early.
     const sameColorText = '<mark style="background:#ffff00">hello</mark>';
     const editor = makeEditor({
       getSelection: vi.fn(() => sameColorText),
@@ -306,10 +302,7 @@ describe("setBackgroundcolor", () => {
       ]),
     });
     setBackgroundcolor("#ffff00", editor as any);
-    // replaceSelection IS called (with the same content — the colour value
-    // stays unchanged because the replacement matches and re-applies #ffff00).
-    const arg = (editor.replaceSelection as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(arg).toContain("background:#ffff00");
+    expect(editor.replaceSelection).not.toHaveBeenCalled();
   });
 
   it("wraps each non-empty line independently in multiline selection", () => {
