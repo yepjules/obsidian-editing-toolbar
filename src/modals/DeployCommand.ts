@@ -11,11 +11,11 @@ interface DeployOption {
 
 export class DeployCommandModal extends Modal {
     private deployOptions: DeployOption[] = [];
-    private command: any;
+    private command: unknown;
     private plugin: editingToolbarPlugin;
   
 
-    constructor(app: App, plugin: editingToolbarPlugin, command: any) {
+    constructor(app: App, plugin: editingToolbarPlugin, command: unknown) {
       super(app);
       this.plugin = plugin;
       this.command = command;
@@ -93,7 +93,7 @@ export class DeployCommandModal extends Modal {
       // 部署到选中的配置
       this.deployOptions.forEach(option => {
         if (option.enabled) {
-          let targetCommands: any[] | undefined;
+          let targetCommands: unknown[] | undefined;
           
           switch (option.id) {
             case 'mobile':

@@ -41,25 +41,25 @@ class GhostTextWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const wrapper = document.createElement("span");
+    const wrapper = activeDocument.createSpan();
     wrapper.className = "cm-ai-ghost-text";
     wrapper.setAttribute("aria-label", t("AI suggestion"));
 
     const lines = this.text.split("\n");
-    const firstLine = document.createElement("span");
+    const firstLine = activeDocument.createSpan();
     firstLine.className = "cm-ai-ghost-first-line";
     firstLine.textContent = lines[0];
     wrapper.appendChild(firstLine);
 
     if (this.showHint) {
-      const hint = document.createElement("span");
+      const hint = activeDocument.createSpan();
       hint.className = "cm-ai-ghost-hint";
       hint.textContent = t("Press Tab to accept");
       wrapper.appendChild(hint);
     }
 
     if (lines.length > 1) {
-      const rest = document.createElement("div");
+      const rest = activeDocument.createDiv();
       rest.className = "cm-ai-ghost-rest";
       rest.textContent = lines.slice(1).join("\n");
       wrapper.appendChild(rest);
@@ -83,7 +83,7 @@ class GhostTextWidget extends WidgetType {
         hint.textContent = t("Press Tab to accept");
         hint.style.display = "inline-flex";
       } else {
-        const newHint = document.createElement("span");
+        const newHint = activeDocument.createSpan();
         newHint.className = "cm-ai-ghost-hint";
         newHint.textContent = t("Press Tab to accept");
         if (firstLine?.nextSibling) {
@@ -101,7 +101,7 @@ class GhostTextWidget extends WidgetType {
         rest.textContent = lines.slice(1).join("\n");
         rest.style.display = "block";
       } else {
-        const newRest = document.createElement("div");
+        const newRest = activeDocument.createDiv();
         newRest.className = "cm-ai-ghost-rest";
         newRest.textContent = lines.slice(1).join("\n");
         dom.appendChild(newRest);
@@ -124,24 +124,24 @@ class LoadingWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const wrapper = document.createElement("span");
+    const wrapper = activeDocument.createSpan();
     wrapper.className = "cm-ai-loading cm-ai-loading-pill";
     wrapper.setAttribute("aria-label", t("AI is generating"));
 
-    const visual = document.createElement("span");
+    const visual = activeDocument.createSpan();
     visual.className = "cm-ai-loading-visual";
 
-    const glow = document.createElement("span");
+    const glow = activeDocument.createSpan();
     glow.className = "cm-ai-loading-glow";
 
-    const spinner = document.createElement("span");
+    const spinner = activeDocument.createSpan();
     spinner.className = "cm-ai-loading-spinner";
 
-    const label = document.createElement("span");
+    const label = activeDocument.createSpan();
     label.className = "cm-ai-loading-label";
     label.textContent = t("AI thinking");
 
-    const sheen = document.createElement("span");
+    const sheen = activeDocument.createSpan();
     sheen.className = "cm-ai-loading-sheen";
     sheen.setAttribute("aria-hidden", "true");
 
@@ -306,9 +306,9 @@ export function inlineCompletion(
 
       private scheduleAutoTrigger(delay: number): void {
         if (this.autoTriggerTimer) {
-          clearTimeout(this.autoTriggerTimer);
+          activeWindow.clearTimeout(this.autoTriggerTimer);
         }
-        this.autoTriggerTimer = setTimeout(() => {
+        this.autoTriggerTimer = activeWindow.setTimeout(() => {
           void this.startCompletion();
         }, delay);
       }
@@ -366,7 +366,7 @@ export function inlineCompletion(
         this.ownerDocument.removeEventListener("keydown", this.handleDocumentKeydown, true);
         this.abortController?.abort();
         if (this.autoTriggerTimer) {
-          clearTimeout(this.autoTriggerTimer);
+          activeWindow.clearTimeout(this.autoTriggerTimer);
         }
       }
     },

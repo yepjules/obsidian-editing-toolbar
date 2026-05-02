@@ -63,7 +63,7 @@ export class AIEditorManager {
     this.authService.loadSecrets();
     void this.authService.syncLoginState();
     void this.authService.migrateCustomModelApiKeyFromSettings();
-    const registerHandler = (this.plugin as any).registerObsidianProtocolHandler;
+    const registerHandler = (this.plugin as unknown).registerObsidianProtocolHandler;
     if (typeof registerHandler === "function") {
       registerHandler.call(this.plugin, "editing-toolbar-pkmer-auth", async (params: Record<string, string>) => {
         if (params.code && params.state) {
@@ -73,22 +73,22 @@ export class AIEditorManager {
     }
 
     this.plugin.registerEvent?.(
-      (this.plugin.app.metadataCache as any).on?.("changed", () => {
+      (this.plugin.app.metadataCache as unknown).on?.("changed", () => {
         this.invalidateFrontmatterStatsCache();
       }),
     );
     this.plugin.registerEvent?.(
-      (this.plugin.app.vault as any).on?.("create", () => {
+      (this.plugin.app.vault as unknown).on?.("create", () => {
         this.invalidateFrontmatterStatsCache();
       }),
     );
     this.plugin.registerEvent?.(
-      (this.plugin.app.vault as any).on?.("delete", () => {
+      (this.plugin.app.vault as unknown).on?.("delete", () => {
         this.invalidateFrontmatterStatsCache();
       }),
     );
     this.plugin.registerEvent?.(
-      (this.plugin.app.vault as any).on?.("rename", () => {
+      (this.plugin.app.vault as unknown).on?.("rename", () => {
         this.invalidateFrontmatterStatsCache();
       }),
     );
@@ -1099,7 +1099,7 @@ export class AIEditorManager {
       return false;
     }
 
-    const fullText = (resolvedEditor as any).getValue?.() ?? "";
+    const fullText = (resolvedEditor as unknown).getValue?.() ?? "";
     const frontmatterRange = this.findFrontmatterRange(fullText);
     const noteBody = frontmatterRange
       ? `${fullText.slice(0, frontmatterRange.from)}${fullText.slice(frontmatterRange.to)}`.trim()
@@ -1149,7 +1149,7 @@ export class AIEditorManager {
 
   private buildFrontmatterStyleSummary(): { context: string; preferredAliases: Record<string, string> } {
     const activeFile = this.plugin.app.workspace.getActiveFile();
-    const allMarkdownFiles = ((this.plugin.app.vault as any).getMarkdownFiles?.() ?? []) as Array<any>;
+    const allMarkdownFiles = ((this.plugin.app.vault as unknown).getMarkdownFiles?.() ?? []) as Array<unknown>;
     if (!activeFile || allMarkdownFiles.length === 0) {
       return { context: "", preferredAliases: {} };
     }
@@ -1216,13 +1216,13 @@ export class AIEditorManager {
     };
   }
 
-  private collectFrontmatterStats(files: Array<any>, exampleLimit: number): FrontmatterStats {
+  private collectFrontmatterStats(files: Array<unknown>, exampleLimit: number): FrontmatterStats {
     const keyCounts = new Map<string, number>();
     const examples: string[] = [];
     let fileCount = 0;
 
     for (const file of files) {
-      const cache = (this.plugin.app.metadataCache as any)?.getFileCache?.(file);
+      const cache = (this.plugin.app.metadataCache as unknown)?.getFileCache?.(file);
       const frontmatter = cache?.frontmatter;
       if (!frontmatter || typeof frontmatter !== "object") {
         continue;
@@ -1273,7 +1273,7 @@ export class AIEditorManager {
     };
   }
 
-  private getVaultFrontmatterStats(allMarkdownFiles: Array<any>): FrontmatterStats {
+  private getVaultFrontmatterStats(allMarkdownFiles: Array<unknown>): FrontmatterStats {
     const now = Date.now();
     const cached = this.vaultFrontmatterStatsCache;
     if (
@@ -1454,13 +1454,13 @@ export class AIEditorManager {
       const closeBtn = doc.createElement("button");
       closeBtn.type = "button";
       closeBtn.className = "editing-toolbar-ai-inline-prompt-close";
-      closeBtn.title = t("Close" as any);
+      closeBtn.title = t("Close" as unknown);
       closeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
       header.append(dragHandle, titleEl, closeBtn);
       const settingsBtn = doc.createElement("button");
       settingsBtn.type = "button";
       settingsBtn.className = "editing-toolbar-ai-inline-prompt-settings";
-      settingsBtn.title = t("Manage Templates" as any);
+      settingsBtn.title = t("Manage Templates" as unknown);
       settingsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"/></svg>`;
 
       const inputWrapper = doc.createElement("div");
@@ -1475,7 +1475,7 @@ export class AIEditorManager {
       const historyBtn = doc.createElement("button");
       historyBtn.type = "button";
       historyBtn.className = "editing-toolbar-ai-inline-prompt-history-btn";
-      historyBtn.title = t("History" as any);
+      historyBtn.title = t("History" as unknown);
       historyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`;
 
       const historyDropdown = doc.createElement("div");
@@ -1489,7 +1489,7 @@ export class AIEditorManager {
       sendBtn.type = "button";
       sendBtn.className = "editing-toolbar-ai-inline-prompt-send-btn";
       sendBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>`;
-      sendBtn.title = t("Send" as any);
+      sendBtn.title = t("Send" as unknown);
 
       inputWrapper.append(textarea, historyBtn, historyDropdown, mentionDropdown,sendBtn);
 
@@ -1635,8 +1635,8 @@ export class AIEditorManager {
       const hint = doc.createElement("div");
       hint.className = "editing-toolbar-ai-inline-prompt-hint";
       const promptHint = Platform.isMobileApp
-        ? t("Enter inserts a newline. Tap Send to submit." as any)
-        : t("Press Enter to send, Shift+Enter for newline, Esc to close." as any);
+        ? t("Enter inserts a newline. Tap Send to submit." as unknown)
+        : t("Press Enter to send, Shift+Enter for newline, Esc to close." as unknown);
       hint.textContent = promptHint  ;
 
    
@@ -1782,7 +1782,7 @@ export class AIEditorManager {
         if (history.length === 0) {
           const emptyItem = doc.createElement("div");
           emptyItem.className = "editing-toolbar-ai-inline-prompt-history-empty";
-          emptyItem.textContent = t("No history" as any);
+          emptyItem.textContent = t("No history" as unknown);
           historyDropdown.appendChild(emptyItem);
         } else {
           history.forEach((item, index) => {
@@ -1828,7 +1828,7 @@ export class AIEditorManager {
       settingsBtn.addEventListener("click", () => {
         this.plugin.app.setting.open();
         this.plugin.app.setting.openTabById("editing-toolbar");
-        setTimeout(() => {
+        activeWindow.setTimeout(() => {
           const tabsContainer = this.plugin.app.setting.activeTab?.containerEl?.querySelector(".editing-toolbar-tabs");
           if (tabsContainer) {
             const aiTab = Array.from(tabsContainer.children).find((el: HTMLElement) =>
@@ -1844,7 +1844,7 @@ export class AIEditorManager {
       });
       let linkStartPos = -1;
       let selectedSuggestionIndex = 0;
-      let suggestionFiles: any[] = [];
+      let suggestionFiles: unknown[] = [];
 
       const syncLinkedNotesContext = async () => {
         const text = textarea.value;
@@ -1894,7 +1894,7 @@ export class AIEditorManager {
         renderContextItems();
       };
 
-      const selectSuggestion = async (file: any) => {
+      const selectSuggestion = async (file: unknown) => {
         const cursorPos = textarea.selectionStart;
         const beforeLink = textarea.value.substring(0, linkStartPos);
         const afterCursor = textarea.value.substring(cursorPos);
@@ -2150,7 +2150,7 @@ export class AIEditorManager {
 
   private getEditorView(editor?: Editor | null): EditorView | null {
     const resolvedEditor = this.resolveEditor(editor);
-    const view = (resolvedEditor as any)?.cm;
+    const view = (resolvedEditor as unknown)?.cm;
     if (view && view.state && typeof view.dispatch === "function") {
       return view as EditorView;
     }

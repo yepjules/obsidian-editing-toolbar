@@ -37,7 +37,7 @@ export function getAIErrorMessage(error: unknown): string {
     return error.trim();
   }
 
-  const response = (error as { response?: { json?: any; text?: unknown } } | null)?.response;
+  const response = (error as { response?: { json?: unknown; text?: unknown } } | null)?.response;
   const responseMessage = response?.json?.error?.message || response?.json?.message || response?.text;
   if (typeof responseMessage === "string" && responseMessage.trim()) {
     return responseMessage.trim();

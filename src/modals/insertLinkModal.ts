@@ -888,7 +888,7 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
             );
     
         // 设置光标聚焦逻辑
-        setTimeout(() => {
+        activeWindow.setTimeout(() => {
             if (!this.linkText && !this.linkUrl) {
                 this.linkTextInput.inputEl.focus();
             } else if (!this.linkText && this.linkUrl) {
@@ -1069,7 +1069,7 @@ private async fetchRemoteTitle(url: string): Promise<string> {
         }
 
         // 在下一个事件循环中设置光标位置，确保编辑器已更新
-        setTimeout(() => {
+        activeWindow.setTimeout(() => {
             // 将光标移动到链接后面
             if (newCursorPos) {
                 editor.setCursor(newCursorPos);

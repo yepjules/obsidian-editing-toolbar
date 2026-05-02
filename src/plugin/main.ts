@@ -68,13 +68,13 @@ function ensureAppearanceStore(
   // On first migration: seed all style buckets from the legacy/global fields
   if (migratingFromGlobal) {
     APPEARANCE_KEYS.forEach((key) => {
-      const legacyValue = (settings as any)[key];
+      const legacyValue = (settings as unknown)[key];
       if (legacyValue === undefined) return;
 
       STYLE_KEYS.forEach((style) => {
         const bucket = store[style]!;
         if (!(key in bucket)) {
-          (bucket as any)[key] = legacyValue;
+          (bucket as unknown)[key] = legacyValue;
         }
       });
     });
@@ -94,7 +94,7 @@ export interface AdmonitionDefinition  {
 
 interface AdmonitionPluginPublic {
   admonitions: Map<string, AdmonitionDefinition>;
-  postprocessors: Map<string, any>;
+  postprocessors: Map<string, unknown>;
 }
 // ... 常量定义 ...
 interface EditorContextMenuAction {
@@ -175,7 +175,7 @@ export default class editingToolbarPlugin extends Plugin {
       // Only patch properties that actually exist on settings
       if (!(key in settings)) return;
 
-      const initialGlobal = (settings as any)[key];
+      const initialGlobal = (settings as unknown)[key];
 
       Object.defineProperty(settings, key, {
         configurable: true,
@@ -184,22 +184,22 @@ export default class editingToolbarPlugin extends Plugin {
           const style = getCurrentStyle();
           const bucket = store[style];
           if (bucket && Object.prototype.hasOwnProperty.call(bucket, key)) {
-            return (bucket as any)[key];
+            return (bucket as unknown)[key];
           }
           // Fallback to the original global value
           return initialGlobal;
         },
-        set(value: any) {
+        set(value: unknown) {
           const style = getCurrentStyle();
           ensureAppearanceStore(settings, false);
           const bucket = (settings.appearanceByStyle as AppearanceByStyle)[style]!;
-          (bucket as any)[key] = value;
+          (bucket as unknown)[key] = value;
         },
       });
     });
   }
 
-  private removeToolbarCommandById(commands: any[] | undefined, commandId: string): void {
+  private removeToolbarCommandById(commands: unknown[] | undefined, commandId: string): void {
     if (!Array.isArray(commands)) return;
 
     for (let index = commands.length - 1; index >= 0; index--) {
@@ -238,7 +238,7 @@ export default class editingToolbarPlugin extends Plugin {
   }
   public refreshAIAvailability(): void {
     this.syncAIToolbarCommandVisibility();
-    setTimeout(() => {
+    activeWindow.setTimeout(() => {
       dispatchEvent(new Event("editingToolbar-NewCommand"));
     }, 100);
   }
@@ -475,13 +475,13 @@ export default class editingToolbarPlugin extends Plugin {
       
       // Ensure toolbar respects initial visibility state after Settings Search completes
       // Use a small delay to ensure Settings Search has finished scanning settings tabs
-      setTimeout(() => {
+      activeWindow.setTimeout(() => {
         if (!this.settings.cMenuVisibility) {
           this.handleeditingToolbar();
         }
       }, 100);
 
-      setTimeout(() => {
+      activeWindow.setTimeout(() => {
         if (shouldShowAIFeatures()) {
           void this.aiManager.maybeShowAIOnboarding();
         }
@@ -491,7 +491,7 @@ export default class editingToolbarPlugin extends Plugin {
     if (requireApiVersion("0.15.0")) {
       this.app.workspace.on("window-open", (leaf) => {
         this.init_evt(leaf.doc, editor);
-        setTimeout(() => {
+        activeWindow.setTimeout(() => {
           if (!this.settings.cMenuVisibility) {
             return;
           }
@@ -538,7 +538,7 @@ export default class editingToolbarPlugin extends Plugin {
         this.settings.commandIdsFixed = true;
         await this.saveSettings();
       }
-      setTimeout(() => {
+      activeWindow.setTimeout(() => {
         updateModal.open();
       }, 3000);
     }
@@ -564,7 +564,7 @@ export default class editingToolbarPlugin extends Plugin {
 
     // this.app.workspace.onLayoutReady(this.handleeditingToolbar_editor.bind(this));
     if (this.settings.cMenuVisibility == true) {
-      setTimeout(() => {
+      activeWindow.setTimeout(() => {
         dispatchEvent(new Event("editingToolbar-NewCommand"));
       }, 100);
     }
@@ -680,7 +680,7 @@ this.app.workspace.onLayoutReady(async () => {
       }  
     }
 
-  processAdmonitionTypes(pluginInstance: any) {
+  processAdmonitionTypes(pluginInstance: unknown) {
     const admonitionPlugin = pluginInstance as {
       admonitions?: Record<string, AdmonitionDefinition>;
     };
@@ -791,15 +791,15 @@ this.app.workspace.onLayoutReady(async () => {
     // If you already added `isTopToolbarActive` earlier, this will call it.
     // If not, it falls back to a legacy-compatible check.
     const topEnabled =
-      typeof (this as any).isTopToolbarActive === "function"
-        ? (this as any).isTopToolbarActive()
+      typeof (this as unknown).isTopToolbarActive === "function"
+        ? (this as unknown).isTopToolbarActive()
         : this.settings.enableTopToolbar ||
           (!this.settings.enableFollowingToolbar &&
             !this.settings.enableFixedToolbar &&
             this.positionStyle === "top");
 
     const followingEnabled =
-      typeof (this as any).isFollowingToolbarActive === "function"
+      typeof (this as unknown).isFollowingToolbarActive === "function"
         ? this.isFollowingToolbarActive()
         : this.settings.enableFollowingToolbar ||
           (!this.settings.enableTopToolbar &&
@@ -886,7 +886,7 @@ this.app.workspace.onLayoutReady(async () => {
         return;
       }
 
-      setTimeout(() => {
+      activeWindow.setTimeout(() => {
         resetToolbar(this);
         editingToolbarPopover(app, this);
       }, 200);
@@ -988,7 +988,7 @@ this.app.workspace.onLayoutReady(async () => {
   }
 
   // 获取当前位置样式对应的命令配置
-  getCurrentCommands(style?: string): any[] {
+  getCurrentCommands(style?: string): unknown[] {
     if (!this.settings.enableMultipleConfig) {
       return this.settings.menuCommands;
     }
@@ -1011,7 +1011,7 @@ this.app.workspace.onLayoutReady(async () => {
   }
 
   // 更新指定样式对应的命令配置（设置页可以显式指定样式）
-updateCurrentCommands(commands: any[], style?: string): void {
+updateCurrentCommands(commands: unknown[], style?: string): void {
   // 单一配置模式：一直使用 menuCommands
   if (!this.settings.enableMultipleConfig) {
     this.settings.menuCommands = commands;
@@ -1771,8 +1771,8 @@ updateCurrentCommands(commands: any[], style?: string): void {
 
   private getToolbarHostDocument(editor?: Editor): Document {
     return (
-      (editor as any)?.cm?.dom?.ownerDocument ||
-      (editor as any)?.cm?.contentDOM?.ownerDocument ||
+      (editor as unknown)?.cm?.dom?.ownerDocument ||
+      (editor as unknown)?.cm?.contentDOM?.ownerDocument ||
       this.app.workspace.activeLeaf?.view?.containerEl?.ownerDocument ||
       (requireApiVersion("0.15.0") ? activeWindow.document : window.document)
     );
@@ -1838,12 +1838,12 @@ updateCurrentCommands(commands: any[], style?: string): void {
 
   private throttle(func: Function, limit: number = 100) {
     let inThrottle: boolean;
-    return function (this: any, ...args: any[]) {
+    return function (this: unknown, ...args: unknown[]) {
       const context = this;
       if (!inThrottle) {
         func.apply(context, args);
         inThrottle = true;
-        setTimeout(() => (inThrottle = false), limit);
+        activeWindow.setTimeout(() => (inThrottle = false), limit);
       }
     };
   }
@@ -1916,7 +1916,7 @@ updateCurrentCommands(commands: any[], style?: string): void {
     this.toolbarIconSize = this.settings.toolbarIconSize;
   
     // Refresh the global CSS variables from the *active* style's appearance
-    const doc = activeDocument ?? document;
+    const doc = activeDocument ?? activeDocument;
     if (doc && doc.documentElement) {
       doc.documentElement.style.setProperty(
         "--editing-toolbar-background-color",

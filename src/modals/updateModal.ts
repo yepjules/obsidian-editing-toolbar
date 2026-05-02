@@ -86,7 +86,7 @@ export class UpdateNoticeModal extends Modal {
         this.changelogContent,
         this.changelogContentEl,
         "",
-        this.plugin as any
+        this.plugin as unknown
       );
     }
   }
@@ -356,7 +356,7 @@ export class UpdateNoticeModal extends Modal {
     this.changelogContentEl.setText(t("Loading changelog..."));
 
     // 异步加载更新日志，不阻塞界面显示
-    setTimeout(() => {
+    activeWindow.setTimeout(() => {
       this.loadChangelog();
     }, 100);
 

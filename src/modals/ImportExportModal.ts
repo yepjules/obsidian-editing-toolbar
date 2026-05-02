@@ -177,7 +177,7 @@ export class ImportExportModal extends Modal {
   }
 
   updateExportContent() {
-    let exportContent: any = {
+    let exportContent: unknown = {
       // 添加元数据
       _exportInfo: {
         version: this.plugin.manifest.version,
@@ -273,7 +273,7 @@ export class ImportExportModal extends Modal {
   }
 
   // 验证导出内容
-  private validateExportContent(exportContent: any) {
+  private validateExportContent(exportContent: unknown) {
     // 确保数组类型的字段不为null
     ['menuCommands', 'followingCommands', 'topCommands', 'fixedCommands', 'mobileCommands', 'customCommands'].forEach(key => {
       if (key in exportContent && !exportContent[key]) {
@@ -463,7 +463,7 @@ export class ImportExportModal extends Modal {
   }
 
   // 执行覆盖导入
-  performOverwriteImport(importData: any) {
+  performOverwriteImport(importData: unknown) {
     // 导入一般设置
     this.importGeneralSettings(importData);
 
@@ -494,7 +494,7 @@ export class ImportExportModal extends Modal {
   }
 
   // 执行更新导入
-  performUpdateImport(importData: any) {
+  performUpdateImport(importData: unknown) {
     // 导入一般设置
     this.importGeneralSettings(importData);
 
@@ -523,13 +523,13 @@ export class ImportExportModal extends Modal {
       this.updateCommandArray(this.plugin.settings.mobileCommands, importData.mobileCommands);
     }
   }
-  private updateCommandArray(targetArray: any[], sourceArray: any[]) {
+  private updateCommandArray(targetArray: unknown[], sourceArray: unknown[]) {
     if (!targetArray) {
       return sourceArray.slice();
     }
 
     // 遍历导入的命令
-    sourceArray.forEach((importedCommand: any) => {
+    sourceArray.forEach((importedCommand: unknown) => {
       // 检查命令是否已存在
       const existingCommandIndex = targetArray.findIndex(
         cmd => cmd.id === importedCommand.id
@@ -555,7 +555,7 @@ export class ImportExportModal extends Modal {
     return targetArray;
   }
   // 导入一般设置
-  importGeneralSettings(importData: any) {
+  importGeneralSettings(importData: unknown) {
     const generalSettings = [
       'positionStyle', 'aestheticStyle', 'appendMethod', 'autohide','Iscentered',
       'isLoadOnMobile', 'cMenuNumRows', 'enableMultipleConfig',
@@ -566,7 +566,7 @@ export class ImportExportModal extends Modal {
 
     generalSettings.forEach(key => {
       if (importData[key] !== undefined) {
-        (this.plugin.settings as any)[key] = importData[key];
+        (this.plugin.settings as unknown)[key] = importData[key];
       }
     });
   }
@@ -587,7 +587,7 @@ export class ImportExportModal extends Modal {
       'cMenuToolbar-Divider-Line': 'editingToolbar-Divider-Line',
     };
 
-    const fixCommandsInArray = (commands: any[]) => {
+    const fixCommandsInArray = (commands: unknown[]) => {
       if (!commands || !Array.isArray(commands)) return;
 
       commands.forEach(cmd => {
@@ -612,7 +612,7 @@ export class ImportExportModal extends Modal {
   }
 
   // 恢复备份
-  restoreBackup(backup: any) {
+  restoreBackup(backup: unknown) {
     this.plugin.settings.positionStyle = backup.positionStyle;
     this.plugin.settings.menuCommands = backup.menuCommands;
     this.plugin.settings.customCommands = backup.customCommands;

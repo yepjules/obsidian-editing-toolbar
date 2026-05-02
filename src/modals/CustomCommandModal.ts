@@ -206,7 +206,7 @@ function addSpecialCharButtons(setting: Setting, input: HTMLInputElement) {
           tooltip.textContent = '已复制!';
           
           // 2秒后移除提示
-          setTimeout(() => {
+          activeWindow.setTimeout(() => {
             tooltip.remove();
           }, 2000);
         })
@@ -422,7 +422,7 @@ addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('inpu
           // 保存设置并关闭模态框
           this.plugin.saveSettings().then(() => {
             this.close();
-            setTimeout(() => {
+            activeWindow.setTimeout(() => {
               dispatchEvent(new Event("editingToolbar-NewCommand"));
               this.plugin.reloadCustomCommands();
             }, 100);
@@ -435,7 +435,7 @@ addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('inpu
       );
 
     // 设置光标聚焦逻辑
-    setTimeout(() => {
+    activeWindow.setTimeout(() => {
       if (this.commandIndex)
         this.commandIdInput.inputEl.focus();
       else
@@ -444,7 +444,7 @@ addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('inpu
   }
 
   // 添加更新命令图标的辅助方法
-  private updateCommandIcon(commands: any[], commandId: string) {
+  private updateCommandIcon(commands: unknown[], commandId: string) {
     if (!commands) return;
 
     commands.forEach(cmd => {

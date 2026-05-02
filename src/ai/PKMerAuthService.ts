@@ -17,7 +17,7 @@ export class PKMerAuthService {
   private plugin: EditingToolbarPlugin;
   private cachedVerified: boolean | null = null;
   private refreshPromise: Promise<boolean> | null = null;
-  private callbackServer: any = null;
+  private callbackServer: unknown = null;
   private pendingCodeVerifier: string | null = null;
   private pendingState: string | null = null;
   private pendingAuthorizationUrl: string | null = null;
@@ -31,7 +31,7 @@ export class PKMerAuthService {
   }
 
   private get secrets() {
-    return (this.plugin.app as any).secretStorage;
+    return (this.plugin.app as unknown).secretStorage;
   }
 
   private get supportsSecretStorage(): boolean {
@@ -197,7 +197,7 @@ export class PKMerAuthService {
 
     if (Platform.isMobile) {
       window.open(loginEntryUrl);
-      setTimeout(() => {
+      activeWindow.setTimeout(() => {
         if (this.isPendingStateMatch(state)) {
           this.clearPendingOAuthRequest();
         }
@@ -286,8 +286,8 @@ export class PKMerAuthService {
   private startCallbackServer(): Promise<string | null> {
     return new Promise((resolve) => {
       try {
-        const http = (window as any).require("node:http");
-        const server = http.createServer((req: any, res: any) => {
+        const http = (window as unknown).require("node:http");
+        const server = http.createServer((req: unknown, res: unknown) => {
           const url = new URL(req.url, `http://localhost:${PKMER_OAUTH_CONFIG.callbackPort}`);
 
           if (url.pathname !== "/editing-toolbar/callback") {
@@ -321,10 +321,10 @@ export class PKMerAuthService {
             resolve(null);
           }
 
-          setTimeout(() => this.closeCallbackServer(), 500);
+          activeWindow.setTimeout(() => this.closeCallbackServer(), 500);
         });
 
-        server.on("error", (error: any) => {
+        server.on("error", (error: unknown) => {
           console.error("Callback server error:", error);
           new Notice(`Failed to start login server: ${error.message}`);
           resolve(null);
@@ -333,7 +333,7 @@ export class PKMerAuthService {
         server.listen(PKMER_OAUTH_CONFIG.callbackPort, "127.0.0.1");
         this.callbackServer = server;
 
-        setTimeout(() => {
+        activeWindow.setTimeout(() => {
           if (this.callbackServer === server) {
             this.closeCallbackServer();
             resolve(null);

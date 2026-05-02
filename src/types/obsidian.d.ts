@@ -17,8 +17,8 @@ declare module "obsidian" {
 	}
 
 	interface Plugin {
-		registerEditorExtension?(extension: any): void;
-		registerObsidianProtocolHandler?(action: string, callback: (params: Record<string, string>) => any): void;
+		registerEditorExtension?(extension: unknown): void;
+		registerObsidianProtocolHandler?(action: string, callback: (params: Record<string, string>) => unknown): void;
 	}
 
 	interface SettingsManager {
@@ -39,7 +39,7 @@ declare module "obsidian" {
 	interface Plugins {
 		manifests: Record<string, PluginManifest>;
 		plugins: Record<string, Plugin_2>;
-		enabledPlugins: any;
+		enabledPlugins: unknown;
 		enablePlugin(pluginId: string): Promise<boolean>;
 		disablePlugin(pluginId: string): Promise<void>;
 	}
@@ -59,7 +59,7 @@ declare module "obsidian" {
 	}
 
 	interface Workspace {
-		on(name: 'canvas:node-menu', callback: (menu: Menu, node: unknown) => any, ctx?: any): EventRef;
+		on(name: 'canvas:node-menu', callback: (menu: Menu, node: unknown) => unknown, ctx?: unknown): EventRef;
 	}
 
 	interface MarkdownSubView {
@@ -74,7 +74,7 @@ declare module "obsidian" {
 	}
 
 	interface EditorSuggestManager {
-		suggests: EditorSuggest<any>[];
+		suggests: EditorSuggest<unknown>[];
 	}
 
 	interface Notice {
@@ -257,7 +257,7 @@ declare module "obsidian" {
 		/**
 		 * @public
 		 */
-		addItem(cb: (item: MenuItem) => any): this;
+		addItem(cb: (item: MenuItem) => unknown): this;
 		/**
 		 * @public
 		 */
@@ -278,7 +278,7 @@ declare module "obsidian" {
 		/**
 		 * @public
 		 */
-		onHide(callback: () => any): void;
+		onHide(callback: () => unknown): void;
 
 	}
 

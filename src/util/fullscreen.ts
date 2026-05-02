@@ -46,9 +46,9 @@ export function fullscreenMode(app: App) {
 
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.toggleFull = exports.isFull = exports.exitFull = exports.beFull = void 0;
-    let DOC_EL = document.documentElement;
+    let DOC_EL = activeDocument.documentElement;
     let headEl = DOC_EL.querySelector('head');
-    let styleEl = document.createElement('style');
+    let styleEl = activeDocument.createEl('style');
     let TYPE_REQUEST_FULL_SCREEN = 'requestFullscreen';
     let TYPE_EXIT_FULL_SCREEN = 'exitFullscreen';
     let TYPE_FULL_SCREEN_ELEMENT = 'fullscreenElement';
@@ -79,7 +79,7 @@ export function fullscreenMode(app: App) {
     if (!leaf)
         return;
     let el = leaf.containerEl;
-    let modroot = document.body?.querySelector(".mod-vertical.mod-root .workspace-tab-container") as HTMLElement
+    let modroot = activeDocument.body?.querySelector(".mod-vertical.mod-root .workspace-tab-container") as HTMLElement
     let fullscreenMutationObserver: MutationObserver;
     fullscreenMutationObserver = new MutationObserver(function (mutationRecords) {
         mutationRecords.forEach(function (mutationRecord) {
@@ -87,7 +87,7 @@ export function fullscreenMode(app: App) {
                 if (isFull(modroot)) {
                     try {
 
-                        document.body.removeChild(node);
+                        activeDocument.body.removeChild(node);
                         el.appendChild(node);
                     } catch (error) {
                         console.log(error.message)
@@ -113,17 +113,17 @@ export function fullscreenMode(app: App) {
     } else {
 
         beFull(modroot)
-        fullscreenMutationObserver.observe(document.body, { childList: true });
+        fullscreenMutationObserver.observe(activeDocument.body, { childList: true });
 
     }
 
     // 添加类型定义
     interface HTMLElementWithFullscreen extends HTMLElement {
-      [key: string]: any;
+      [key: string]: unknown;
     }
 
     interface DocumentWithFullscreen extends Document {
-      [key: string]: any;
+      [key: string]: unknown;
     }
 
     // 修改相关代码
@@ -140,14 +140,14 @@ export function fullscreenMode(app: App) {
         if (DOC_EL.contains(styleEl)) {
             headEl === null || headEl === void 0 ? void 0 : headEl.removeChild(styleEl);
         }
-        return (document as DocumentWithFullscreen)[TYPE_EXIT_FULL_SCREEN]();
+        return (activeDocument as DocumentWithFullscreen)[TYPE_EXIT_FULL_SCREEN]();
     }
     exports.exitFull = exitFull;
-    function isFull(el: any) {
-        return getCurrentElement(el) === (document as DocumentWithFullscreen)[TYPE_FULL_SCREEN_ELEMENT];
+    function isFull(el: unknown) {
+        return getCurrentElement(el) === (activeDocument as DocumentWithFullscreen)[TYPE_FULL_SCREEN_ELEMENT];
     }
     exports.isFull = isFull;
-    function toggleFull(el: any) {
+    function toggleFull(el: unknown) {
         if (isFull(el)) {
             exitFull();
             return false;

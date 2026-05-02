@@ -531,10 +531,10 @@ export class ToolbarAIService implements IAIService {
     return error;
   }
 
-  private extractOllamaModelNames(payload: any): string[] {
+  private extractOllamaModelNames(payload: unknown): string[] {
     const models = Array.isArray(payload?.models) ? payload.models : [];
     const names: string[] = models
-      .map((item: any): string => {
+      .map((item: unknown): string => {
         if (typeof item?.name === "string" && item.name.trim()) {
           return item.name.trim();
         }
@@ -735,7 +735,7 @@ export class ToolbarAIService implements IAIService {
     return false;
   }
 
-  private extractText(payload: any): string {
+  private extractText(payload: unknown): string {
     const content = payload?.choices?.[0]?.message?.content
       ?? payload?.choices?.[0]?.text
       ?? payload?.message?.content

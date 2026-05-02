@@ -44,7 +44,7 @@ export class StatusBar {
     menu.addSections(["controls"]); // 使用 addSections 添加部分
     this.addToolbarControls(menu);
 
-    const menuDom = (menu as any).dom as HTMLElement;
+    const menuDom = (menu as unknown).dom as HTMLElement;
     menuDom.addClass("editingToolbar-statusbar-menu");
 
     menu.showAtPosition({
@@ -58,7 +58,7 @@ export class StatusBar {
       // 先设置所有属性
       item.setTitle(t("Hide & Show"));
       requireApiVersion("0.15.0") ? item.setSection("settings") : true;
-      const itemDom = (item as any).dom as HTMLElement;
+      const itemDom = (item as unknown).dom as HTMLElement;
       const toggleComponent = new ToggleComponent(itemDom)
         .setValue(this.plugin.settings.cMenuVisibility)
         .setDisabled(true);
@@ -67,7 +67,7 @@ export class StatusBar {
         this.plugin.settings.cMenuVisibility = !this.plugin.settings.cMenuVisibility;
         toggleComponent.setValue(this.plugin.settings.cMenuVisibility);
         this.plugin.settings.cMenuVisibility == true
-          ? setTimeout(() => {
+          ? activeWindow.setTimeout(() => {
             dispatchEvent(new Event("editingToolbar-NewCommand"));
           }, 100)
           : setMenuVisibility(this.plugin.settings.cMenuVisibility);
@@ -93,7 +93,7 @@ export class StatusBar {
       // Top 工具栏开关
       submenu.addItem((subItem) => {
         subItem.setTitle(t("Top Toolbar"));
-        const itemDom = (subItem as any).dom as HTMLElement;
+        const itemDom = (subItem as unknown).dom as HTMLElement;
         const toggleComponent = new ToggleComponent(itemDom)
           .setValue(this.plugin.settings.enableTopToolbar || false)
           .setDisabled(true);
@@ -124,7 +124,7 @@ export class StatusBar {
       // Following 工具栏开关
       submenu.addItem((subItem) => {
         subItem.setTitle(t("Following Toolbar"));
-        const itemDom = (subItem as any).dom as HTMLElement;
+        const itemDom = (subItem as unknown).dom as HTMLElement;
         const toggleComponent = new ToggleComponent(itemDom)
           .setValue(this.plugin.settings.enableFollowingToolbar || false)
           .setDisabled(true);
@@ -155,7 +155,7 @@ export class StatusBar {
       // Fixed 工具栏开关
       submenu.addItem((subItem) => {
         subItem.setTitle(t("Fixed Toolbar"));
-        const itemDom = (subItem as any).dom as HTMLElement;
+        const itemDom = (subItem as unknown).dom as HTMLElement;
         const toggleComponent = new ToggleComponent(itemDom)
           .setValue(this.plugin.settings.enableFixedToolbar || false)
           .setDisabled(true);
@@ -223,7 +223,7 @@ export class StatusBar {
 
           // 刷新工具栏
           selfDestruct(this.plugin);
-          setTimeout(() => {
+          activeWindow.setTimeout(() => {
             dispatchEvent(new Event("editingToolbar-NewCommand"));
           }, 100);
         });
@@ -271,7 +271,7 @@ export class StatusBar {
               // 如果当前视图就是这个类型，则刷新工具栏
               if (viewType === vType) {
                 selfDestruct(this.plugin);
-                setTimeout(() => {
+                activeWindow.setTimeout(() => {
                   dispatchEvent(new Event("editingToolbar-NewCommand"));
                 }, 100);
               }
@@ -352,7 +352,7 @@ export class StatusBar {
             this.plugin.settings.aestheticStyle = style;
             await this.plugin.saveSettings();
             selfDestruct(this.plugin);
-            setTimeout(() => {
+            activeWindow.setTimeout(() => {
               dispatchEvent(new Event("editingToolbar-NewCommand"));
             }, 100);
           });
