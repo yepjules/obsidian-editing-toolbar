@@ -175,12 +175,12 @@ export function isExistoolbar(
   return container ? (container as HTMLElement) : null;
 }
 
-const getNestedObject = (nestedObj: unknown, pathArr: unknown[]) => {
+const getNestedObject = (nestedObj: any, pathArr: any[]) => {
   return pathArr.reduce((obj, key) =>
     (obj && obj[key] !== 'undefined') ? obj[key] : undefined, nestedObj);
 }
 
-function setHilite(keys: unknown, how: string) {
+function setHilite(keys: any, how: string) {
   // need to check if existing key combo is overridden by undefining it
   if (keys && keys[1][0] !== undefined) {
     return how + keys.flat(2).join('+').replace('Mod', 'Ctrl') + how;
@@ -198,7 +198,7 @@ function getHotkey(app: App, cmdid: string, highlight = false) {
     [getNestedObject(arr.hotkeys, [0, 'key'])]] : undefined;
     // @ts-ignore
     let ck = app.hotkeyManager.customKeys[arr.id];
-    let hotkeys = ck ? [[getNestedObject(ck, [0, 'modifiers'])], [getNestedObject(ck, [0, 'key'])]] : undefined;
+    var hotkeys = ck ? [[getNestedObject(ck, [0, 'modifiers'])], [getNestedObject(ck, [0, 'key'])]] : undefined;
     return hotkeys ? setHilite(hotkeys, hi) : setHilite(defkeys, '');
   } else
     return "–"
@@ -206,7 +206,7 @@ function getHotkey(app: App, cmdid: string, highlight = false) {
 
 
 
-export const getCoords = (editor: unknown) => {
+export const getCoords = (editor: any) => {
   let cursorFrom = editor.getCursor("head");
   if (editor.getCursor("head").ch !== editor.getCursor("from").ch) cursorFrom.ch = Math.max(0, cursorFrom.ch - 1);
 
@@ -228,7 +228,7 @@ export function checkHtml(htmlStr: string) {
   return reg.test(htmlStr);
 }
 
-function applyMenuItemIcon(menuItem: unknown, icon: string) {
+function applyMenuItemIcon(menuItem: any, icon: string) {
   if (!icon) {
     menuItem.setIcon("");
     if (menuItem.iconEl) {
@@ -274,7 +274,7 @@ function syncToolbarVisibilityAfterAction(
 }
 
 function positionAISubmenu(buttonEl: HTMLElement, submenuEl: HTMLElement) {
-  const viewportWidth = window.innerWidth || activeDocument.documentElement.clientWidth || 0;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
   if (!viewportWidth) return;
 
   const margin = 12;
@@ -346,7 +346,7 @@ const CANVAS_ONLY_AI_ACTION_IDS = new Set<string>([
 function setLastAIAction(plugin: editingToolbarPlugin, commandId: string) {
   plugin.lastExecutedCommand = commandId;
   plugin.lastExecutedCommandName = AI_BUTTON_LABEL_KEYS[commandId]
-    ? t(AI_BUTTON_LABEL_KEYS[commandId] as unknown)
+    ? t(AI_BUTTON_LABEL_KEYS[commandId] as any)
     : t("AI");
 }
 
@@ -364,7 +364,7 @@ function getAIToolbarButtonLabel(plugin: editingToolbarPlugin): string {
   }
 
   if (commandId && AI_BUTTON_LABEL_KEYS[commandId] && (!isCanvasOnlyAIAction(commandId) || isCanvasScene)) {
-    return t(AI_BUTTON_LABEL_KEYS[commandId] as unknown);
+    return t(AI_BUTTON_LABEL_KEYS[commandId] as any);
   }
 
   if (commandId?.startsWith("editing-toolbar:ai") && plugin.lastExecutedCommandName && (!isCanvasOnlyAIAction(commandId) || isCanvasScene)) {
@@ -459,7 +459,7 @@ async function executeAIToolbarAction(
 }
 
 export function createDiv(selector: string) {
-  let div = createDiv();
+  let div = createEl("div");
   div.addClass(selector);
   return div;
 }
@@ -612,7 +612,7 @@ export function createMoremenu(app: App, plugin: editingToolbarPlugin, selector:
     popoverEl.style.margin = "0";
   };
 
-  let cMoreMenu = selector.createSpan();
+  let cMoreMenu = selector.createEl("span");
   cMoreMenu.addClass("more-menu");
   let morebutton = new ButtonComponent(cMoreMenu);
   morebutton
@@ -738,8 +738,8 @@ export function createFollowingbar(
 ) {
   const targetDocument =
     hostDocument ||
-    (editor as unknown)?.cm?.dom?.ownerDocument ||
-    (editor as unknown)?.cm?.contentDOM?.ownerDocument ||
+    (editor as any)?.cm?.dom?.ownerDocument ||
+    (editor as any)?.cm?.contentDOM?.ownerDocument ||
     app.workspace.activeLeaf?.view?.containerEl?.ownerDocument ||
     (requireApiVersion("0.15.0") ? activeWindow.document : window.document);
 
@@ -1001,7 +1001,7 @@ export function editingToolbarPopover(
       let buttonWidth = resolvedIconSize + 8;
     
       // 主工具栏容器
-      let editingToolbar = createDiv();
+      let editingToolbar = createEl("div");
       if (editingToolbar) {
         // 标记为编辑工具栏，并带上样式信息
         editingToolbar.addClass("editingToolbarModalBar");
@@ -1036,7 +1036,7 @@ export function editingToolbarPopover(
       editingToolbar.setAttribute("id", "editingToolbarModalBar");
     
       // 二级弹出菜单
-      let PopoverMenu = createDiv();
+      let PopoverMenu = createEl("div");
       PopoverMenu.addClass("editingToolbarpopover");
       PopoverMenu.addClass("editingToolbarTinyAesthetic");
     
@@ -1203,7 +1203,7 @@ export function editingToolbarPopover(
 
       // Use per-style commands based on the toolbar we are rendering
       const currentCommands = plugin.getCurrentCommands(effectiveStyle);
-      const getLocalizedLabel = (label: string): string => t(label as unknown);
+      const getLocalizedLabel = (label: string): string => t(label as any);
       const getLocalizedTooltip = (label: string, hotkey: string): string => {
         const localizedLabel = getLocalizedLabel(label);
         return hotkey === "–" ? localizedLabel : `${localizedLabel}(${hotkey})`;
@@ -1212,7 +1212,7 @@ export function editingToolbarPopover(
       currentCommands.forEach((item, index) => {
         let tip;
         if ("SubmenuCommands" in item) {
-          let _btn: unknown;
+          let _btn: any;
 
           if (shouldMoveButtonToMoreMenu(btnwidth, buttonWidth, leafwidth, buttonWidth, effectiveStyle)) {
             //说明已经溢出
@@ -1249,7 +1249,7 @@ export function editingToolbarPopover(
             _btn.onClick((evt: MouseEvent) => {
               const menu = new Menu();
 
-              item.SubmenuCommands.forEach((subitem: { name: string; id: unknown; icon: string }) => {
+              item.SubmenuCommands.forEach((subitem: { name: string; id: any; icon: string }) => {
                 // 检查是否是分割线
                 if (subitem.id === "editingToolbar-Divider-Line") {
                   // 添加分割线和分类标题
@@ -1257,7 +1257,7 @@ export function editingToolbarPopover(
                   // 添加一个禁用的菜单项作为分类标题，使用翻译函数
                   menu.addItem((menuItem) => {
                     menuItem
-                      .setTitle(t(subitem.name as unknown))  // 使用翻译函数，添加类型断言
+                      .setTitle(t(subitem.name as any))  // 使用翻译函数，添加类型断言
                       .setDisabled(true);
 
                     applyMenuItemIcon(menuItem, "");
@@ -1267,7 +1267,7 @@ export function editingToolbarPopover(
                   menu.addItem((menuItem) => {
                     // 获取快捷键
                     const hotkey = getHotkey(app, subitem.id, false);
-                    const title = t(subitem.name as unknown);
+                    const title = t(subitem.name as any);
 
                     // 如果有快捷键，添加到标题后面
                     const displayTitle = hotkey !== "–" ? `${title}` : title;
@@ -1314,7 +1314,7 @@ export function editingToolbarPopover(
             let submenu = createDiv("subitem");
             if (submenu) {
               item.SubmenuCommands.forEach(
-                (subitem: { name: string; id: unknown; icon: string }) => {
+                (subitem: { name: string; id: any; icon: string }) => {
                   let hotkey = getHotkey(app, subitem.id);
                   tip = getLocalizedTooltip(subitem.name, hotkey);
                   let sub_btn = new ButtonComponent(submenu)
@@ -1388,16 +1388,16 @@ export function editingToolbarPopover(
 
             let aiLabel: HTMLSpanElement | null = null;
             if (!isCompactAIButton) {
-              const aiMain = activeDocument.createSpan();
+              const aiMain = document.createElement("span");
               aiMain.className = "editing-toolbar-ai-button-main";
-              aiLabel = activeDocument.createSpan();
+              aiLabel = document.createElement("span");
               aiLabel.className = "editing-toolbar-ai-button-label";
               aiLabel.textContent = getAIToolbarButtonLabel(plugin);
               aiMain.appendChild(aiLabel);
               button2.buttonEl.appendChild(aiMain);
             }
 
-            const aiArrow = activeDocument.createSpan();
+            const aiArrow = document.createElement("span");
             aiArrow.className = "editing-toolbar-ai-button-arrow";
             aiArrow.setAttribute("aria-hidden", "true");
             aiArrow.textContent = String.fromCharCode(9662);
@@ -1447,7 +1447,7 @@ export function editingToolbarPopover(
 
                 menu.addItem((menuItem) => {
                   menuItem
-                    .setTitle(t(options.title as unknown))
+                    .setTitle(t(options.title as any))
                     .setIcon(options.icon)
                     .onClick(runAction);
 
@@ -1470,12 +1470,12 @@ export function editingToolbarPopover(
                 }>,
               ) => {
                 menu.addItem((menuItem) => {
-                  menuItem.setTitle(t(title as unknown)).setIcon(icon);
+                  menuItem.setTitle(t(title as any)).setIcon(icon);
                   const submenu = menuItem.setSubmenu();
                   actions.forEach((action) => {
                     submenu.addItem((subItem) => {
                       subItem
-                        .setTitle(t(action.title as unknown))
+                        .setTitle(t(action.title as any))
                         .setIcon(action.icon)
                         .onClick(async () => {
                           if (!providerReady) {
@@ -1668,7 +1668,7 @@ export function editingToolbarPopover(
 
             btnwidth += buttonWidth;
             //  let Selection = createDiv("triangle-icon");
-            let submenu2 = createDiv();
+            let submenu2 = createEl("div");
             submenu2.addClass("subitem");
 
             if (submenu2) {
@@ -1703,7 +1703,7 @@ export function editingToolbarPopover(
                 .onClick(() => {
                   app.setting.open();
                   app.setting.openTabById("editing-toolbar");
-                  activeWindow.setTimeout(() => {
+                  setTimeout(() => {
                     // 获取标签页容器
                     const tabsContainer = app.setting.activeTab.containerEl.querySelector(".editing-toolbar-tabs");
                     if (tabsContainer) {
@@ -1712,7 +1712,7 @@ export function editingToolbarPopover(
                       appearanceTab?.click();
 
                       // 等待标签页切换完成后定位到颜色设置
-                      activeWindow.setTimeout(() => {
+                      setTimeout(() => {
                         let settingEI = app.setting.activeTab.containerEl.querySelector(".custom_font");
                         if (settingEI) { settingEI.addClass?.("toolbar-cta"); }
                       }, 100);
@@ -1752,7 +1752,7 @@ export function editingToolbarPopover(
 
             btnwidth += buttonWidth;
             //  let Selection = createDiv("triangle-icon");
-            let submenu2 = createDiv();
+            let submenu2 = createEl("div");
             submenu2.addClass("subitem");
             if (submenu2) {
               submenu2.innerHTML = backcolorpicker(plugin);
@@ -1786,7 +1786,7 @@ export function editingToolbarPopover(
                 .onClick(() => {
                   app.setting.open();
                   app.setting.openTabById("editing-toolbar");
-                  activeWindow.setTimeout(() => {
+                  setTimeout(() => {
                     // 获取标签页容器
                     const tabsContainer = app.setting.activeTab.containerEl.querySelector(".editing-toolbar-tabs");
                     if (tabsContainer) {
@@ -1795,7 +1795,7 @@ export function editingToolbarPopover(
                       appearanceTab?.click();
 
                       // 等待标签页切换完成后定位到颜色设置
-                      activeWindow.setTimeout(() => {
+                      setTimeout(() => {
                         let settingEI = app.setting.activeTab.containerEl.querySelector(".custom_bg");
                         if (settingEI) { settingEI.addClass?.("toolbar-cta"); }
                       }, 100);
@@ -1866,7 +1866,7 @@ export function editingToolbarPopover(
       createMoremenu(app, plugin, editingToolbar);
       if (Math.abs(plugin.settings.cMenuWidth - Number(btnwidth)) > (btnwidth + 4)) {
         plugin.settings.cMenuWidth = Number(btnwidth);
-        activeWindow.setTimeout(() => {
+        setTimeout(() => {
           plugin.saveSettings();
         }, 100);
       }

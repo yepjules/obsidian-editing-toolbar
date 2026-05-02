@@ -10,13 +10,13 @@ export type IconSelectCallback = (iconId: string) => void;
 
 export class ChooseFromIconList extends FuzzySuggestModal<string> {
   plugin: editingToolbarPlugin;
-  command: unknown;
+  command: any;
   issub: boolean;
   currentEditingConfig:string;
   customCallback: IconSelectCallback | null = null;
   constructor(
     plugin: editingToolbarPlugin, 
-    command: unknown, 
+    command: any, 
     issub: boolean = false,
     callback?: IconSelectCallback,
     currentEditingConfig?:string
@@ -113,7 +113,7 @@ export class ChooseFromIconList extends FuzzySuggestModal<string> {
     }
 
     await this.plugin.saveSettings();
-    activeWindow.setTimeout(() => {
+    setTimeout(() => {
       dispatchEvent(new Event("editingToolbar-NewCommand"));
     }, 100);
     console.log(
@@ -129,7 +129,7 @@ export class CustomIcon extends Modal {
   item: Command;
   issub: boolean;
   currentEditingConfig:string;
-  submitEnterCallback: (this: HTMLTextAreaElement, ev: KeyboardEvent) => unknown;
+  submitEnterCallback: (this: HTMLTextAreaElement, ev: KeyboardEvent) => any;
   customCallback: IconSelectCallback | null = null;
 
   constructor(
@@ -154,7 +154,7 @@ export class CustomIcon extends Modal {
     const { contentEl } = this;
     contentEl.createEl("b", { text: t("Enter the icon code, format as <svg>.... </svg>") });
     
-    const textComponent = activeDocument.createEl("textarea");
+    const textComponent = document.createElement("textarea");
     textComponent.className = "wideInputPromptInputEl";
     textComponent.placeholder = "";
     textComponent.value = this.item.icon || '';
@@ -204,7 +204,7 @@ export class CustomIcon extends Modal {
     if (this.customCallback) {
       this.customCallback(this.item.icon || '');
     } else {
-      activeWindow.setTimeout(() => {
+      setTimeout(() => {
         dispatchEvent(new Event("editingToolbar-NewCommand"));
       }, 100);
     }
@@ -228,7 +228,7 @@ export class CommandPicker extends FuzzySuggestModal<Command> {
   }
 
   getItemText(item: Command): string {
-    return t(item.name as unknown);
+    return t(item.name as any);
   }
 
   async onChooseItem(item: Command): Promise<void> {
@@ -240,7 +240,7 @@ export class CommandPicker extends FuzzySuggestModal<Command> {
 
     if (index > -1) // 命令已存在
     {
-      new Notice(t("The command") + t(item.name as unknown) + t("already exists"), 3000);
+      new Notice(t("The command") + t(item.name as any) + t("already exists"), 3000);
       return;
     } else {
       if (item.icon) {
@@ -249,7 +249,7 @@ export class CommandPicker extends FuzzySuggestModal<Command> {
         // 更新当前配置，传递配置样式参数
         this.plugin.updateCurrentCommands(currentCommands, this.currentEditingConfig);
         await this.plugin.saveSettings();
-        activeWindow.setTimeout(() => {
+        setTimeout(() => {
           dispatchEvent(new Event("editingToolbar-NewCommand"));
         }, 100);
         console.log(
@@ -272,7 +272,7 @@ export class ChangeCmdname extends Modal {
   item: Command;
   issub: boolean;
   currentEditingConfig:string;
-  submitEnterCallback: (this: HTMLInputElement, ev: KeyboardEvent) => unknown;
+  submitEnterCallback: (this: HTMLInputElement, ev: KeyboardEvent) => any;
   constructor(app: App, plugin: editingToolbarPlugin, item: Command, issub: boolean,currentEditingConfig?:string) {
     super(plugin.app);
     this.plugin = plugin;
@@ -323,7 +323,7 @@ export class ChangeCmdname extends Modal {
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
-    activeWindow.setTimeout(() => {
+    setTimeout(() => {
       dispatchEvent(new Event("editingToolbar-NewCommand"));
     }, 100);
   }
@@ -357,8 +357,8 @@ export class openSlider extends Modal {
       const columnsContainer = containerEl.createDiv({ cls: "columns-slider-container" });
       columnsContainer.createEl("p", { text: t("Editing Toolbar Columns") });
     // 获取body容器的高度和宽度
-    const bodyHeight = activeDocument.body.clientHeight;
-    const bodyWidth = activeDocument.body.clientWidth;
+    const bodyHeight = document.body.clientHeight;
+    const bodyWidth = document.body.clientWidth;
 
     // 根据容器尺寸计算滑块范围
     const verticalMax = Math.floor(bodyHeight / 3);
@@ -394,7 +394,7 @@ export class openSlider extends Modal {
         this.needSave = true;
         this.plugin.settings.cMenuNumRows = value;
         await this.plugin.saveSettings();
-        activeWindow.setTimeout(() => {
+        setTimeout(() => {
           dispatchEvent(new Event("editingToolbar-NewCommand"));
         }, 100);
       }, 100, true))

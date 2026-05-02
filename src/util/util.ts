@@ -1,7 +1,7 @@
 import { Editor,Command,MarkdownView } from "obsidian";
 import { syntaxTree } from '@codemirror/language';
 export async function wait(delay: number) {
-  return new Promise((resolve) => activeWindow.setTimeout(resolve, delay));
+  return new Promise((resolve) => setTimeout(resolve, delay));
 }
 // GenNonDuplicateID(3) 将生成类似 ix49wl2978w 的ID
 export function GenNonDuplicateID(randomLength: number) {
@@ -9,12 +9,12 @@ export function GenNonDuplicateID(randomLength: number) {
   idStr += Math.random().toString(36).substr(3, randomLength)
   return idStr
 }
-export function findmenuID(plugin: { settings: { menuCommands: unknown; }; }, command: Command, issub: boolean,currentCommands:unknown[]) {
+export function findmenuID(plugin: { settings: { menuCommands: any; }; }, command: Command, issub: boolean,currentCommands:any[]) {
   let index;
   let res = { "index": -1, "subindex": -1 };
   let menucmd = currentCommands
   if (issub) {
-    menucmd.forEach((item: { SubmenuCommands: unknown[]; }, idx: unknown) => {
+    menucmd.forEach((item: { SubmenuCommands: any[]; }, idx: any) => {
       if ("SubmenuCommands" in item) {
         index = item.SubmenuCommands.findIndex((v) => v.id == command.id);
         if (index >= 0) {
@@ -25,13 +25,13 @@ export function findmenuID(plugin: { settings: { menuCommands: unknown; }; }, co
     });
   }
   else {
-    index = menucmd.findIndex((v: { id: unknown; }) => v.id == command.id);
+    index = menucmd.findIndex((v: { id: any; }) => v.id == command.id);
     res = { "index": index, "subindex": -1 };
   }
   return res;
 }
 
-export function colorpicker(plugin: { settings: { custom_fc1: unknown; custom_fc2: unknown; custom_fc3: unknown; custom_fc4: unknown; custom_fc5: unknown; }; }) {
+export function colorpicker(plugin: { settings: { custom_fc1: any; custom_fc2: any; custom_fc3: any; custom_fc4: any; custom_fc5: any; }; }) {
   return `<div class='x-color-picker-wrapper'>
 <div class='x-color-picker' >
   <table class="x-color-picker-table" id='x-color-picker-table'>
@@ -148,7 +148,7 @@ export function colorpicker(plugin: { settings: { custom_fc1: unknown; custom_fc
 </div>`;
 }
 
-export function backcolorpicker(plugin: { settings: { custom_bg1: unknown; custom_bg2: unknown; custom_bg3: unknown; custom_bg4: unknown; custom_bg5: unknown; }; }) {
+export function backcolorpicker(plugin: { settings: { custom_bg1: any; custom_bg2: any; custom_bg3: any; custom_bg4: any; custom_bg5: any; }; }) {
   return `<div class='x-color-picker-wrapper'>
 <div class='x-color-picker' >
   <table class="x-color-picker-table" id='x-backgroundcolor-picker-table'>

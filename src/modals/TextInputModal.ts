@@ -111,7 +111,7 @@ export class TextInputModal extends Modal {
                     textarea.inputEl.addClass("editing-toolbar-textarea-input");
 
                     if (field === this.fields[0]) {
-                        activeWindow.setTimeout(() => textarea.inputEl.focus(), 10);
+                        setTimeout(() => textarea.inputEl.focus(), 10);
                     }
 
                     textarea.inputEl.addEventListener("keydown", (e) => {
@@ -136,7 +136,7 @@ export class TextInputModal extends Modal {
 
                 // 第一个输入框自动聚焦
                 if (field === this.fields[0]) {
-                    activeWindow.setTimeout(() => text.inputEl.focus(), 10);
+                    setTimeout(() => text.inputEl.focus(), 10);
                 }
 
                 // 支持回车提交
@@ -231,7 +231,7 @@ export class TextInputModal extends Modal {
             this.inputElements.set(field.key, textareaEl);
 
             if (field === this.fields[0]) {
-                activeWindow.setTimeout(() => textareaEl.focus(), 10);
+                setTimeout(() => textareaEl.focus(), 10);
             }
 
             textareaEl.addEventListener("input", () => {
@@ -259,7 +259,7 @@ export class TextInputModal extends Modal {
         this.inputElements.set(field.key, inputEl);
 
         if (field === this.fields[0]) {
-            activeWindow.setTimeout(() => inputEl.focus(), 10);
+            setTimeout(() => inputEl.focus(), 10);
         }
 
         inputEl.addEventListener("input", () => {
