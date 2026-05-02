@@ -69,18 +69,20 @@ describe("shouldShowAIFeatures", () => {
     expect(shouldShowAIFeatures("zh-tw")).toBe(true);
   });
 
-  it("returns false for non-Chinese locales", () => {
-    expect(shouldShowAIFeatures("en")).toBe(false);
-    expect(shouldShowAIFeatures("fr")).toBe(false);
-    expect(shouldShowAIFeatures("ja")).toBe(false);
+  it("returns true for non-Chinese locales (AI features are always enabled)", () => {
+    // The current implementation unconditionally returns true — AI features
+    // are shown for all locales regardless of the locale argument.
+    expect(shouldShowAIFeatures("en")).toBe(true);
+    expect(shouldShowAIFeatures("fr")).toBe(true);
+    expect(shouldShowAIFeatures("ja")).toBe(true);
   });
 
-  it("uses getCurrentLocale when no argument is given", () => {
+  it("always returns true regardless of getCurrentLocale result", () => {
     mockMomentLocale.mockReturnValueOnce("zh-cn");
     expect(shouldShowAIFeatures()).toBe(true);
 
     mockMomentLocale.mockReturnValueOnce("en");
-    expect(shouldShowAIFeatures()).toBe(false);
+    expect(shouldShowAIFeatures()).toBe(true);
   });
 });
 
