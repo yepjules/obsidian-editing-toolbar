@@ -581,7 +581,7 @@ export class RegexCommandModal extends Modal {
           // 保存设置并关闭模态框
           this.plugin.saveSettings().then(() => {
             this.close();
-            activeWindow.setTimeout(() => {
+            setTimeout(() => {
               dispatchEvent(new Event("editingToolbar-NewCommand"));
               this.plugin.reloadCustomCommands();
             }, 100);
@@ -654,12 +654,12 @@ export class RegexCommandModal extends Modal {
       (codeContainer as HTMLDivElement).style.borderTop = '1px solid var(--background-modifier-border)';
       (codeContainer as HTMLDivElement).style.paddingTop = '10px';
 
-      const codeTitle = codeContainer.createDiv({ text: t('Complete regular expression code (copy to AI for explanation)') });
+      const codeTitle = codeContainer.createEl('div', { text: t('Complete regular expression code (copy to AI for explanation)') });
       codeTitle.style.marginBottom = '5px';
       codeTitle.style.fontWeight = 'bold';
     } else {
       codeContainer.empty();
-      const codeTitle = codeContainer.createDiv({ text: t('Complete regular expression code (copy to AI for explanation)') });
+      const codeTitle = codeContainer.createEl('div', { text: t('Complete regular expression code (copy to AI for explanation)') });
       codeTitle.style.marginBottom = '5px';
       codeTitle.style.fontWeight = 'bold';
     }
@@ -699,7 +699,7 @@ export class RegexCommandModal extends Modal {
     copyButton.addEventListener('click', () => {
       navigator.clipboard.writeText(codeText).then(() => {
         copyButton.textContent = t('Copied!');
-        activeWindow.setTimeout(() => {
+        setTimeout(() => {
           copyButton.textContent = t('Copy code');
         }, 2000);
       }).catch(err => {

@@ -297,13 +297,13 @@ function retryRewrite(view: EditorView, rewriteField: StateField<RewriteFieldVal
 function setActionButtonLabel(btn: HTMLButtonElement, label: string, shortcut?: string): void {
   btn.replaceChildren();
 
-  const labelEl = activeDocument.createSpan();
+  const labelEl = document.createElement("span");
   labelEl.className = "cm-ai-btn-label";
   labelEl.textContent = label;
   btn.appendChild(labelEl);
 
   if (shortcut) {
-    const shortcutEl = activeDocument.createSpan();
+    const shortcutEl = document.createElement("span");
     shortcutEl.className = "cm-ai-btn-shortcut";
     shortcutEl.textContent = shortcut;
     btn.appendChild(shortcutEl);
@@ -320,7 +320,7 @@ function createResultPanelTooltipView(
     createGeneratedArtifact?: RewriteConfig["createGeneratedArtifact"];
   },
 ): TooltipView {
-  const dom = activeDocument.createDiv();
+  const dom = document.createElement("div");
   dom.className = "cm-ai-result-panel";
   dom.dataset.phase = "streaming";
   let copyResetTimer: number | null = null;
@@ -331,14 +331,14 @@ function createResultPanelTooltipView(
     }
   });
 
-  const headerRow = activeDocument.createDiv();
+  const headerRow = document.createElement("div");
   headerRow.className = "cm-ai-result-header-row";
 
-  const header = activeDocument.createDiv();
+  const header = document.createElement("div");
   header.className = "cm-ai-result-header";
   header.textContent = t("AI is writing...");
 
-  const closeBtn = activeDocument.createEl("button");
+  const closeBtn = document.createElement("button");
   closeBtn.type = "button";
   closeBtn.className = "cm-ai-result-close";
   closeBtn.textContent = "×";
@@ -352,11 +352,11 @@ function createResultPanelTooltipView(
   headerRow.append(header, closeBtn);
   dom.appendChild(headerRow);
 
-  const content = activeDocument.createDiv();
+  const content = document.createElement("div");
   content.className = "cm-ai-result-content";
   dom.appendChild(content);
 
-  const actionsBar = activeDocument.createDiv();
+  const actionsBar = document.createElement("div");
   actionsBar.className = "cm-ai-result-actions";
   actionsBar.style.display = "none";
 
@@ -483,7 +483,7 @@ function createActionButton(
   onClick: () => void,
   shortcut?: string,
 ): HTMLButtonElement {
-  const btn = activeDocument.createEl("button");
+  const btn = document.createElement("button");
   btn.className = `cm-ai-btn ${className}`;
   setActionButtonLabel(btn, label, shortcut);
   btn.addEventListener("click", onClick);

@@ -38,7 +38,7 @@ export class CommandsManager {
   private plugin: editingToolbarPlugin;
 
   private formatAICommandName(...segments: string[]): string {
-    return [t("AI"), ...segments.map((segment) => t(segment as unknown))].join(" / ");
+    return [t("AI"), ...segments.map((segment) => t(segment as any))].join(" / ");
   }
 
   private aiRewriteCommandIcons: Record<RewriteInstruction, string> = {
@@ -68,7 +68,7 @@ export class CommandsManager {
   // 执行命令时保持编辑器焦点的辅助函数
   private executeCommandWithoutBlur = async (
     editor: Editor,
-    callback: () => unknown
+    callback: () => any
   ) => {
     if (editor) {
       await callback();
@@ -120,7 +120,7 @@ export class CommandsManager {
       // noop
     }
 
-    const invocationCandidates: Array<{ owner: unknown; method: string; label: string }> = [
+    const invocationCandidates: Array<{ owner: any; method: string; label: string }> = [
       { owner: activeView.canvas, method: action, label: `canvas.${action}()` },
       {
         owner: activeView.canvas?.history,
@@ -140,15 +140,15 @@ export class CommandsManager {
     return false;
   }
 
-  private getActiveCanvasView(): unknown | null {
-    const activeLeafView = this.plugin.app.workspace.activeLeaf?.view as unknown;
+  private getActiveCanvasView(): any | null {
+    const activeLeafView = this.plugin.app.workspace.activeLeaf?.view as any;
     if (activeLeafView?.getViewType?.() === "canvas") {
       return activeLeafView;
     }
 
     const canvasLeaves = this.plugin.app.workspace.getLeavesOfType?.("canvas") ?? [];
     for (const leaf of canvasLeaves) {
-      const view = (leaf as unknown)?.view;
+      const view = (leaf as any)?.view;
       if (view?.getViewType?.() === "canvas") {
         return view;
       }
@@ -522,7 +522,7 @@ export class CommandsManager {
     return items;
   }
 
-  public getActiveEditor(): unknown {
+  public getActiveEditor(): any {
     // @ts-ignore
     const activeEditor = this.plugin.app.workspace?.activeEditor;
     if (activeEditor && activeEditor.editor) {
@@ -561,7 +561,7 @@ export class CommandsManager {
         this.plugin.settings.cMenuVisibility =
           !this.plugin.settings.cMenuVisibility;
         if (this.plugin.settings.cMenuVisibility) {
-          activeWindow.setTimeout(() => {
+          setTimeout(() => {
             dispatchEvent(new Event("editingToolbar-NewCommand"));
           }, 100);
         } else {

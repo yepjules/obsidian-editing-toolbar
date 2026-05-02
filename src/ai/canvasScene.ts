@@ -80,7 +80,7 @@ export interface CanvasNodeSummary {
 export interface ActiveCanvasContext {
   view: TextFileView;
   file: TFile;
-  activeDocument: CanvasDocumentRecord;
+  document: CanvasDocumentRecord;
   anchorNode: CanvasNodeSummary | null;
   selectedNodeIds: string[];
   selectedNodes: CanvasNodeSummary[];

@@ -73,7 +73,7 @@ export interface PKMerUserInfo {
   name?: string;
   email?: string;
   avatar?: string;
-  ai_quota?: { quota: number; remainingQuota?: number; [key: string]: unknown };
+  ai_quota?: { quota: number; remainingQuota?: number; [key: string]: any };
   device_count?: number;
   thino?: boolean | string | number;
   thinoWebExpir?: string | number;
