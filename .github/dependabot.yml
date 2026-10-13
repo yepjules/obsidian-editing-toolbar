@@ -1,0 +1,15 @@
+# Security updates only (version updates stay off via open-pull-requests-limit: 0),
+# grouped into one PR per ecosystem.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directories:
+      - "**/*"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
