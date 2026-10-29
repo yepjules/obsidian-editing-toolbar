@@ -37,11 +37,12 @@ describe("TextEnhancement.getPlainText", () => {
 
   beforeEach(() => {
     writeTextMock = vi.fn().mockResolvedValue(undefined);
-    (globalThis as any).navigator = { clipboard: { writeText: writeTextMock } };
+    vi.stubGlobal("navigator", { clipboard: { writeText: writeTextMock } });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("does nothing when no text is selected", () => {
@@ -105,11 +106,12 @@ describe("TextEnhancement.smartPaste", () => {
 
   beforeEach(() => {
     readTextMock = vi.fn();
-    (globalThis as any).navigator = { clipboard: { readText: readTextMock } };
+    vi.stubGlobal("navigator", { clipboard: { readText: readTextMock } });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("does nothing when the clipboard is empty", async () => {
