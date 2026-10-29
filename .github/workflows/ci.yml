@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [brain]
+  push:
+    branches: [brain]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Mirrors the release workflow; pnpm-lock.yaml is out of sync with package.json overrides,
+      # so a frozen pnpm install fails on the base branch.
+      - run: npm install --legacy-peer-deps
+      - run: npm run build
+      - run: npm test
