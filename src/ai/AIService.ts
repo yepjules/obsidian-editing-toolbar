@@ -6,6 +6,7 @@ import { resolvePKMerModelForScene } from "./types";
 import type { CompletionParams, IAIService, PKMerModelScene, RewriteArtifactKind, RewriteInstruction, RewriteParams } from "./types";
 import type { CustomModelApiFormat } from "./types";
 import { PKMerAuthService } from "./PKMerAuthService";
+import { AIUrlHelper } from "./urlValidation";
 
 interface ResolvedProvider {
   kind: "pkmer" | "custom";
@@ -61,7 +62,9 @@ export class ToolbarAIService implements IAIService {
       throw new Error(`Missing custom model settings: ${validation.missing.join(", ")}`);
     }
 
-    await this.requestChatCompletionResult(
+    AIUrlHelper.validateBaseUrl(validation.provider.baseUrl, validation.provider.apiFormat);
+
+    const result = await this.requestChatCompletionResult(
       [
         {
           role: "system",
@@ -73,17 +76,20 @@ export class ToolbarAIService implements IAIService {
         },
       ],
       undefined,
-      {
-        maxTokens: 1,
-      },
+      {},
       validation.provider,
     );
+
+    if (!result.text || !result.text.trim()) {
+      throw new Error(
+        t("Custom model connection test returned an empty response. Check that your API base URL and model name are correct."),
+      );
+    }
   }
 
   async listCustomOllamaModels(): Promise<string[]> {
-    const validation = this.getCustomProviderValidation();
-    const provider = validation.provider;
-    if (!provider || provider.kind !== "custom" || provider.apiFormat !== "ollama") {
+    const provider = this.getCustomProviderForModelListing("ollama");
+    if (!provider) {
       throw new Error("Ollama custom model settings are not enabled.");
     }
 
@@ -97,6 +103,7 @@ export class ToolbarAIService implements IAIService {
           url: requestUrlValue,
           method: "GET",
           headers: this.buildRequestHeaders(provider.apiKey),
+          throw: false,
         });
 
         if (response.status >= 200 && response.status < 300) {
@@ -116,6 +123,57 @@ export class ToolbarAIService implements IAIService {
     }
 
     await this.rethrowUserFacingRequestError(lastError, candidateUrls[0] ?? provider.baseUrl);
+  }
+
+  async listCustomOpenAIModels(): Promise<string[]> {
+    const provider = this.getCustomProviderForModelListing("openai-compatible");
+    if (!provider) {
+      throw new Error("OpenAI-compatible custom model settings are not enabled.");
+    }
+
+    const modelsUrl = this.buildModelsUrl(provider.baseUrl);
+
+    try {
+      const response = await requestUrl({
+        url: modelsUrl,
+        method: "GET",
+        headers: this.buildRequestHeaders(provider.apiKey),
+        throw: false,
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        return this.extractOpenAIModelNames(response.json);
+      }
+
+      throw this.createRequestResponseError(response, modelsUrl);
+    } catch (error) {
+      await this.rethrowUserFacingRequestError(error, modelsUrl);
+    }
+  }
+
+  async listCustomGeminiModels(): Promise<string[]> {
+    const provider = this.getCustomProviderForModelListing("gemini");
+    if (!provider) {
+      throw new Error("Gemini custom model settings are not enabled.");
+    }
+
+    const modelsUrl = this.buildGeminiModelsUrl(provider.baseUrl);
+    try {
+      const response = await requestUrl({
+        url: modelsUrl,
+        method: "GET",
+        headers: this.buildRequestHeaders(provider.apiKey, provider.apiFormat),
+        throw: false,
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        return this.extractGeminiModelNames(response.json);
+      }
+
+      throw this.createRequestResponseError(response, modelsUrl);
+    } catch (error) {
+      await this.rethrowUserFacingRequestError(error, modelsUrl);
+    }
   }
 
   private async requestCompletion(params: CompletionParams, signal?: AbortSignal): Promise<string> {
@@ -195,7 +253,12 @@ export class ToolbarAIService implements IAIService {
     const text = this.extractText(payload);
     return {
       text,
-      finishReason: payload?.choices?.[0]?.finish_reason ?? payload?.done_reason ?? (payload?.done ? "stop" : undefined),
+      finishReason: this.normalizeFinishReason(
+        payload?.choices?.[0]?.finish_reason
+          ?? payload?.candidates?.[0]?.finishReason
+          ?? payload?.done_reason
+          ?? (payload?.done ? "stop" : undefined),
+      ),
     };
   }
 
@@ -207,6 +270,7 @@ export class ToolbarAIService implements IAIService {
   ): Promise<{ response: RequestUrlResponse; requestUrlValue: string }> {
     const candidateUrls = this.getChatCompletionsCandidateUrls(provider);
     let lastError: unknown = null;
+    let retried401 = false;
 
     for (let index = 0; index < candidateUrls.length; index += 1) {
       const requestUrlValue = candidateUrls[index];
@@ -218,6 +282,22 @@ export class ToolbarAIService implements IAIService {
         return { response, requestUrlValue };
       } catch (error) {
         lastError = error;
+
+        // PKMer 401: token may have expired mid-session — try refresh + retry once
+        if (
+          !retried401
+          && provider.kind === "pkmer"
+          && getRequestErrorStatus(error) === 401
+        ) {
+          retried401 = true;
+          const refreshed = await this.authService.refreshFor401();
+          if (refreshed) {
+            provider = { ...provider, apiKey: this.authService.aiToken };
+            index -= 1; // retry same URL
+            continue;
+          }
+        }
+
         const canRetryWithNextUrl = provider.kind === "custom"
           && index < candidateUrls.length - 1
           && this.isRetryableEndpointError(error);
@@ -242,8 +322,9 @@ export class ToolbarAIService implements IAIService {
     const response = await requestUrl({
       url: requestUrlValue,
       method: "POST",
-      headers: this.buildRequestHeaders(provider.apiKey),
+      headers: this.buildRequestHeaders(provider.apiKey, provider.apiFormat),
       body: JSON.stringify(this.buildRequestBody(requestUrlValue, provider, messages, options)),
+      throw: false,
     });
 
     if (response.status >= 200 && response.status < 300) {
@@ -261,6 +342,10 @@ export class ToolbarAIService implements IAIService {
   ): Record<string, unknown> {
     if (provider.kind === "custom" && provider.apiFormat === "ollama") {
       return this.buildOllamaRequestBody(requestUrlValue, provider, messages, options);
+    }
+
+    if (provider.kind === "custom" && provider.apiFormat === "gemini") {
+      return this.buildGeminiRequestBody(provider, messages, options);
     }
 
     return {
@@ -314,6 +399,33 @@ export class ToolbarAIService implements IAIService {
     return prompt ? `${prompt}\n\nASSISTANT:\n` : "ASSISTANT:\n";
   }
 
+  private buildGeminiRequestBody(
+    provider: ResolvedProvider,
+    messages: Array<{ role: string; content: string }>,
+    options: ChatCompletionOptions = {},
+  ): Record<string, unknown> {
+    const systemText = messages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content.trim())
+      .filter(Boolean)
+      .join("\n\n");
+    const contents = messages
+      .filter((message) => message.role !== "system" && message.content.trim())
+      .map((message) => ({
+        role: message.role === "assistant" ? "model" : "user",
+        parts: [{ text: message.content }],
+      }));
+    const generationConfig: Record<string, unknown> = {};
+    if (Number.isFinite(provider.temperature)) generationConfig.temperature = provider.temperature;
+    if (typeof options.maxTokens === "number") generationConfig.maxOutputTokens = options.maxTokens;
+
+    return {
+      systemInstruction: systemText ? { parts: [{ text: systemText }] } : undefined,
+      contents,
+      generationConfig: Object.keys(generationConfig).length > 0 ? generationConfig : undefined,
+    };
+  }
+
   private async resolveProvider(scene: PKMerModelScene = "rewrite"): Promise<ResolvedProvider> {
     const pkmerProvider = await this.getPKMerProvider(scene);
     if (pkmerProvider) {
@@ -361,7 +473,7 @@ export class ToolbarAIService implements IAIService {
     if (!custom.model.trim()) {
       missing.push("model");
     }
-    if (customApiFormat !== "ollama" && !customApiKey) {
+    if (customApiFormat === "gemini" && !customApiKey) {
       missing.push("apiKey");
     }
 
@@ -382,6 +494,26 @@ export class ToolbarAIService implements IAIService {
     };
   }
 
+  private getCustomProviderForModelListing(apiFormat: CustomModelApiFormat): ResolvedProvider | null {
+    if (!this.plugin.settings.ai.enableCustomModel) return null;
+    const custom = this.plugin.settings.ai.customModel;
+    const configuredFormat = custom.apiFormat ?? "openai-compatible";
+    const apiKey = this.authService.customModelApiKey.trim();
+    if (configuredFormat !== apiFormat || !custom.baseUrl.trim()) return null;
+    if (apiFormat === "gemini" && !apiKey) {
+      throw new Error(t("Gemini API key is required."));
+    }
+
+    return {
+      kind: "custom",
+      apiFormat,
+      baseUrl: custom.baseUrl.trim(),
+      apiKey,
+      model: custom.model.trim(),
+      temperature: custom.temperature,
+    };
+  }
+
   private buildChatCompletionsUrl(baseUrl: string): string {
     return this.buildChatCompletionsCandidateUrls(baseUrl)[0] ?? baseUrl.trim().replace(/\/+$/, "");
   }
@@ -395,7 +527,9 @@ export class ToolbarAIService implements IAIService {
     const cachedUrl = this.customChatCompletionsUrlCache.get(cacheKey);
     const urls = provider.apiFormat === "ollama"
       ? this.buildOllamaCandidateUrls(provider.baseUrl)
-      : this.buildChatCompletionsCandidateUrls(provider.baseUrl);
+      : provider.apiFormat === "gemini"
+        ? this.buildGeminiCandidateUrls(provider.baseUrl, provider.model)
+        : this.buildChatCompletionsCandidateUrls(provider.baseUrl);
     if (!cachedUrl) {
       return urls;
     }
@@ -466,13 +600,64 @@ export class ToolbarAIService implements IAIService {
     return [`${normalized}/api/tags`];
   }
 
-  private buildRequestHeaders(apiKey: string): Record<string, string> {
+  private buildGeminiCandidateUrls(baseUrl: string, model: string): string[] {
+    const normalized = this.normalizeGeminiBaseUrl(baseUrl);
+    if (!normalized) return [];
+    if (/\/models\/[^/]+:generateContent$/i.test(normalized)) return [normalized];
+
+    const normalizedModel = model.trim().replace(/^models\//i, "");
+    const modelsBaseUrl = /\/models$/i.test(normalized) ? normalized : `${normalized}/models`;
+    return [`${modelsBaseUrl}/${encodeURIComponent(normalizedModel)}:generateContent`];
+  }
+
+  private buildGeminiModelsUrl(baseUrl: string): string {
+    const normalized = this.normalizeGeminiBaseUrl(baseUrl);
+    if (!normalized) return "";
+    if (/\/models$/i.test(normalized)) return normalized;
+    if (/\/models\/[^/]+:generateContent$/i.test(normalized)) {
+      return normalized.replace(/\/models\/[^/]+:generateContent$/i, "/models");
+    }
+    return `${normalized}/models`;
+  }
+
+  private normalizeGeminiBaseUrl(baseUrl: string): string {
+    const normalized = this.normalizeProviderBaseUrl(baseUrl);
+    if (!normalized) return "";
+    if (/\/models(?:\/[^/]+:generateContent)?$/i.test(normalized)) return normalized;
+    if (/\/v1(?:beta)?$/i.test(normalized)) return normalized;
+    return `${normalized}/v1beta`;
+  }
+
+  private buildModelsUrl(baseUrl: string): string {
+    const normalized = this.normalizeProviderBaseUrl(baseUrl);
+    if (!normalized) return "";
+
+    if (/\/models$/i.test(normalized)) {
+      return normalized;
+    }
+
+    if (/\/chat\/completions$/i.test(normalized)) {
+      return normalized.replace(/\/chat\/completions$/i, "/models");
+    }
+
+    if (/\/v\d+$/i.test(normalized)) {
+      return `${normalized}/models`;
+    }
+
+    return `${normalized}/v1/models`;
+  }
+
+  private buildRequestHeaders(apiKey: string, apiFormat: CustomModelApiFormat = "openai-compatible"): Record<string, string> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
 
     if (apiKey.trim()) {
-      headers.Authorization = `Bearer ${apiKey}`;
+      if (apiFormat === "gemini") {
+        headers["x-goog-api-key"] = apiKey.trim();
+      } else {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
     }
 
     return headers;
@@ -518,8 +703,19 @@ export class ToolbarAIService implements IAIService {
     status: number;
     response: RequestUrlResponse;
   } {
-    const errorMessage = response.json?.error?.message
-      || response.json?.message
+    // response.json is a getter that calls JSON.parse(this.text); when the
+    // body is not valid JSON (e.g. a 401 "Authentication required" plain-text
+    // response), accessing it throws SyntaxError. Parse defensively so the
+    // error path itself never crashes.
+    let parsedJson: { error?: { message?: unknown }; message?: unknown } | null;
+    try {
+      parsedJson = response.json;
+    } catch {
+      parsedJson = null;
+    }
+
+    const errorMessage = parsedJson?.error?.message
+      || parsedJson?.message
       || response.text
       || `Request failed with status ${response.status} (${requestUrlValue})`;
     const error = new Error(typeof errorMessage === "string" ? errorMessage.trim() : String(errorMessage)) as Error & {
@@ -531,10 +727,10 @@ export class ToolbarAIService implements IAIService {
     return error;
   }
 
-  private extractOllamaModelNames(payload: any): string[] {
+  private extractOllamaModelNames(payload: { models?: Array<{ name?: unknown; model?: unknown }> } | null | undefined): string[] {
     const models = Array.isArray(payload?.models) ? payload.models : [];
     const names: string[] = models
-      .map((item: any): string => {
+      .map((item): string => {
         if (typeof item?.name === "string" && item.name.trim()) {
           return item.name.trim();
         }
@@ -548,6 +744,32 @@ export class ToolbarAIService implements IAIService {
     return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right));
   }
 
+  private extractOpenAIModelNames(payload: { data?: Array<{ id?: unknown }> } | null | undefined): string[] {
+    const models = Array.isArray(payload?.data) ? payload.data : [];
+    const names: string[] = models
+      .map((item): string => {
+        if (typeof item?.id === "string" && item.id.trim()) {
+          return item.id.trim();
+        }
+        return "";
+      })
+      .filter((name: string): boolean => !!name);
+
+    return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right));
+  }
+
+  private extractGeminiModelNames(payload: { models?: Array<{ name?: unknown; supportedGenerationMethods?: unknown }> } | null | undefined): string[] {
+    const models = Array.isArray(payload?.models) ? payload.models : [];
+    const names: string[] = models
+      .filter((item) => {
+        const methods = item?.supportedGenerationMethods;
+        return !Array.isArray(methods) || methods.includes("generateContent");
+      })
+      .map((item) => typeof item?.name === "string" ? item.name.replace(/^models\//, "").trim() : "")
+      .filter((name: string): boolean => !!name);
+    return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right));
+  }
+
   private async rethrowUserFacingRequestError(error: unknown, requestUrlValue: string): Promise<never> {
     if (await this.isPKMerQuotaError(error, requestUrlValue)) {
       throw new AIUserNoticeError(
@@ -555,7 +777,55 @@ export class ToolbarAIService implements IAIService {
       );
     }
 
+    if (this.isPKMerAuthError(error, requestUrlValue)) {
+      throw new AIUserNoticeError(
+        t("PKMer login has expired or is invalid. Please log in to PKMer again in Settings → AI."),
+      );
+    }
+
+    const status = getRequestErrorStatus(error);
+    if (status === 401) {
+      throw new AIUserNoticeError(
+        t("AI request failed with status 401 (Unauthorized). Your API key is missing or invalid. Please check your API key in Settings → AI → Custom Model."),
+      );
+    }
+    if (status === 403) {
+      throw new AIUserNoticeError(
+        t("AI request failed with status 403 (Forbidden). The server refused the request. Please check your API key and account permissions."),
+      );
+    }
+    if (status === 404) {
+      throw new AIUserNoticeError(
+        t("AI request failed with status 404 (Not Found). The API endpoint URL may be incorrect. Please check the Base URL in Settings → AI → Custom Model."),
+      );
+    }
+    if (status === 429) {
+      throw new AIUserNoticeError(
+        t("AI request failed with status 429 (Too Many Requests). You are sending requests too quickly or have hit a rate limit. Please wait a moment and try again."),
+      );
+    }
+    if (status && status >= 500) {
+      throw new AIUserNoticeError(
+        t("AI request failed with status {{status}} (Server Error). The AI server is experiencing issues. Please try again later.").replace(/\{\{status\}\}/g, String(status)),
+        10000,
+      );
+    }
+
+    // Network errors (no status code) — connection refused, timeout, DNS, etc.
+    if (status === null) {
+      throw new AIUserNoticeError(
+        t("AI request failed: could not connect to the server. Please check your network connection and the API Base URL in Settings → AI → Custom Model."),
+      );
+    }
+
     throw error;
+  }
+
+  private isPKMerAuthError(error: unknown, requestUrlValue: string): boolean {
+    if (!/pkmer\.cn/i.test(requestUrlValue)) {
+      return false;
+    }
+    return getRequestErrorStatus(error) === 401;
   }
 
   private async isPKMerQuotaError(error: unknown, requestUrlValue: string): Promise<boolean> {
@@ -735,9 +1005,15 @@ export class ToolbarAIService implements IAIService {
     return false;
   }
 
-  private extractText(payload: any): string {
+  private extractText(payload: {
+    choices?: Array<{ message?: { content?: unknown }; text?: unknown }>;
+    candidates?: Array<{ content?: { parts?: unknown } }>;
+    message?: { content?: unknown };
+    response?: unknown;
+  } | null | undefined): string {
     const content = payload?.choices?.[0]?.message?.content
       ?? payload?.choices?.[0]?.text
+      ?? payload?.candidates?.[0]?.content?.parts
       ?? payload?.message?.content
       ?? payload?.response
       ?? "";
@@ -748,12 +1024,19 @@ export class ToolbarAIService implements IAIService {
       return content
         .map((item) => {
           if (typeof item === "string") return item;
+          if (item?.thought === true) return "";
           return item?.text || item?.content || "";
         })
         .join("")
         .trim();
     }
     return "";
+  }
+
+  private normalizeFinishReason(finishReason: unknown): string | undefined {
+    if (typeof finishReason !== "string" || !finishReason.trim()) return undefined;
+    const normalized = finishReason.trim().toLowerCase();
+    return normalized === "max_tokens" ? "length" : normalized;
   }
 
   private trimCompletionToBoundary(text: string): string {

@@ -75,7 +75,7 @@ export interface PKMerUserInfo {
   name?: string;
   email?: string;
   avatar?: string;
-  ai_quota?: { quota: number; remainingQuota?: number; [key: string]: any };
+  ai_quota?: { quota: number; remainingQuota?: number; [key: string]: unknown };
   device_count?: number;
   thino?: boolean | string | number;
   thinoWebExpir?: string | number;
@@ -95,7 +95,7 @@ export interface CustomModelSettings {
   temperature: number;
 }
 
-export type CustomModelApiFormat = "openai-compatible" | "ollama";
+export type CustomModelApiFormat = "openai-compatible" | "ollama" | "gemini";
 
 export type PKMerModelRoutingMode = "smart" | "manual";
 export type PKMerModelScene = "completion" | "rewrite" | "reasoning" | "artifact";
@@ -115,8 +115,18 @@ export interface CustomPromptTemplate {
   icon?: string;
 }
 
+export type FrontmatterPromptMode = "auto" | "custom";
+
+export interface FrontmatterPromptSettings {
+  mode: FrontmatterPromptMode;
+  properties: string;
+  language: string;
+  prompt: string;
+}
+
 export interface AIPluginSettings {
   enabled: boolean;
+  showAIContextMenu: boolean;
   consentAccepted: boolean;
   onboardingShown: boolean;
   providerMode: "pkmer-first" | "custom-only";
@@ -133,6 +143,7 @@ export interface AIPluginSettings {
   pkmer: PKMerAuthSettings;
   enableCustomModel: boolean;
   customModel: CustomModelSettings;
+  frontmatterPrompt: FrontmatterPromptSettings;
   customPromptHistory: string[];
   customPromptTemplates: CustomPromptTemplate[];
 }
@@ -164,6 +175,39 @@ export const DEFAULT_PKMER_AUTH_SETTINGS: PKMerAuthSettings = {
   tokenExpiresAt: 0,
   userInfo: null,
 };
+
+export const DEFAULT_FRONTMATTER_PROPERTIES = [
+  "title: concise, one-line note title",
+  "summary: 1-3 sentence note summary",
+  "tags: YAML list of relevant keywords",
+  "created: YYYY-MM-DD date when appropriate",
+  "category: broad content category",
+].join("\n");
+
+export const DEFAULT_FRONTMATTER_PROMPT = [
+  "Generate YAML frontmatter for the current Obsidian note using the requested properties below.",
+  "",
+  "Requested properties:",
+  "{properties}",
+  "",
+  "Output language for generated values: {language}",
+  "",
+  "Rules:",
+  "- Return only one complete YAML frontmatter block wrapped in --- delimiters.",
+  "- Use the target text as the note content.",
+  "- Follow current and sibling-note frontmatter conventions from context when provided.",
+  "- Keep values concise, practical, and useful for filtering or browsing.",
+  "- Do not add explanations or markdown fences outside the YAML block.",
+].join("\n");
+
+export function createDefaultFrontmatterPromptSettings(): FrontmatterPromptSettings {
+  return {
+    mode: "auto",
+    properties: DEFAULT_FRONTMATTER_PROPERTIES,
+    language: "auto",
+    prompt: DEFAULT_FRONTMATTER_PROMPT,
+  };
+}
 
 const DEFAULT_CUSTOM_PROMPT_TEMPLATES_ZH: CustomPromptTemplate[] = [
   {
@@ -255,16 +299,112 @@ const DEFAULT_CUSTOM_PROMPT_TEMPLATES_EN: CustomPromptTemplate[] = [
   }
 ];
 
+const DEFAULT_CUSTOM_PROMPT_TEMPLATES_JA: CustomPromptTemplate[] = [
+  {
+    id: "template-demo-variables",
+    name: "📝 要点を要約",
+    prompt: "{{file:content}} の構成を分析し、次に重点を置いてください:\n{{selection}}\n\n次を提示してください:\n1. 簡潔な概要\n2. 重要な要点\n3. 改善の提案",
+    icon: "lucide-sparkles"
+  },
+  {
+    id: "template-task-variables",
+    name: "タスクを抽出",
+    prompt: "今日は {{date}} です。{{file:content}} から実行可能なタスクをすべて抽出し、特に次に注意してください:\n{{selection}}\n\nObsidian Tasks プラグインの形式で、各タスクを 1 行ずつ厳密に出力してください:\n\n- [ ] タスク内容 ⏫/🔼/🔽/⏬ 優先度\n- [ ] タスク内容 📅 YYYY-MM-DD 期限\n- [ ] タスク内容 ⏰ YYYY-MM-DD HH:mm リマインダー\n- [ ] タスク内容 🛫 YYYY-MM-DD 開始日\n- [ ] タスク内容 🔁 every day/week/month 繰り返し\n- [ ] タスク内容 #タグ #プロジェクト\n\n抽出ルール:\n1. 本文に「至急」「できるだけ早く」「直ちに」「今日」のような緊急性があれば、⏫ を追加します。\n2. 「明日」「今週」「近日中」のような近い期限を示す表現があれば、🔼 を追加します。\n3. 明示された日付は 📅 YYYY-MM-DD 形式に変換します。\n4. 明示された時刻は可能な限り ⏰ YYYY-MM-DD HH:mm 形式に変換します。\n5. 繰り返し作業には 🔁 every week/month を追加します。\n6. 各タスクに実用的なタグを追加します。\n\n出力例:\n- [ ] プロジェクト報告書を完成する ⏫ 📅 2026-04-25 #仕事\n- [ ] 毎週のチームミーティング 🔁 every week on Monday ⏰ 09:00 #会議\n- [ ] 顧客要望をフォローアップする 🔼 📅 2026-04-23 #フォローアップ",
+    icon: "lucide-sparkles"
+  },
+  {
+    id: "template-dataview",
+    name: "Dataview を生成",
+    prompt: "要件に基づいて Obsidian Dataview のクエリコードブロックを生成してください。要件:\n1. DataviewJS または DQL 構文を使用します。\n2. 必要なフィルターと並べ替えを含めます。\n3. 各部分を説明する短いコメントを追加します。\n4. ロジックが複雑な場合は DataviewJS を使用します。\n\n要件:",
+    icon: "lucide-database"
+  },
+  {
+    id: "template-templater",
+    name: "Templater テンプレートを設計",
+    prompt: "Obsidian Templater のテンプレートを設計してください。要件:\n1. Templater 構文（<%  %>）を使用します。\n2. 日付や時刻などの動的変数を含めます。\n3. ユーザー入力プロンプトに対応します。\n4. 必要な条件分岐とループを追加します。\n5. 各セクションの目的をコメントで説明します。\n\nテンプレートの用途:",
+    icon: "lucide-file-code"
+  },
+  {
+    id: "template-mermaid",
+    name: "Mermaid 図を作成",
+    prompt: "選択したテキスト {{selection}} に基づいて Mermaid 図のコードを生成してください。要件:\n1. フローチャート、シーケンス図、クラス図、ガントチャートなど、適切な図の種類を選びます。\n2. 分かりやすいノード名を使用します。\n3. 必要に応じて有用なスタイルとコメントを追加します。\n4. 構文が有効でレンダリング可能であることを確認します。\n",
+    icon: "lucide-workflow"
+  },
+  {
+    id: "template-metadata",
+    name: "YAML を設計",
+    prompt: "現在のノート内容 {{file:content}} に基づいて、このノートに適した YAML Frontmatter 構造を設計してください。要件:\n1. ノート内容に合うフィールドを提案します。\n2. tags、aliases、date などの一般的なフィールドを含めます。\n3. 役立つカスタムフィールドを提案します。\n4. 各フィールドの目的を簡潔に説明します。\n\nノートの種類:",
+    icon: "lucide-file-json"
+  },
+  {
+    id: "template-callout",
+    name: "Callout で囲む",
+    prompt: "選択したテキスト {{selection}} に基づいて、Obsidian Callout ブロックで囲んでください。要件:\n1. note、tip、warning、danger など、適切な callout タイプを選びます。\n2. 必要に応じて入れ子と折りたたみに対応します。\n3. タイトルと内容を含めます。\n4. 必要に応じてコードブロックまたはリストを使用します。\n\n内容の要件:",
+    icon: "lucide-message-square"
+  }
+];
+
+const DEFAULT_CUSTOM_PROMPT_TEMPLATES_RU: CustomPromptTemplate[] = [
+  {
+    id: "template-demo-variables",
+    name: "📝 Краткое содержание",
+    prompt: "Проанализируй структуру {{file:content}}, уделив особое внимание:\n{{selection}}\n\nПредоставь:\n1. Краткое содержание\n2. Ключевые моменты\n3. Рекомендации по улучшению",
+    icon: "lucide-sparkles"
+  },
+  {
+    id: "template-task-variables",
+    name: "Извлечь задачи",
+    prompt: "Текущая дата {{date}}. Извлеки из {{file:content}} все задачи, уделив особое внимание:\n{{selection}}\n\nВыведи результат строго в формате плагина Obsidian Tasks, каждая задача — с новой строки:\n\n- [ ] Описание задачи ⏫/🔼/🔽/⏬ Приоритет\n- [ ] Описание задачи 📅 YYYY-MM-DD Срок выполнения\n- [ ] Описание задачи ⏰ YYYY-MM-DD HH:mm Время напоминания\n- [ ] Описание задачи 🛫 YYYY-MM-DD Дата начала\n- [ ] Описание задачи 🔁 every day/week/month Периодичность\n- [ ] Описание задачи #тег #проект\n\nПравила извлечения:\n1. Если в тексте встречаются слова \"срочно/немедленно/сейчас/сегодня\", добавь ⏫ (наивысший приоритет).\n2. Если встречаются слова \"завтра/на этой неделе/как можно скорее\", добавь 🔼 (высокий приоритет).\n3. Если указана конкретная дата, преобразуй её в формат 📅 YYYY-MM-DD.\n4. Если указано время, преобразуй его в формат ⏰ YYYY-MM-DD HH:mm.\n5. Если задача повторяется, добавь 🔁 every week/month.\n6. Для каждой задачи подбери подходящие теги (например: #работа #встреча #контроль).\n\nПример вывода:\n- [ ] Завершить отчёт по проекту ⏫ 📅 2026-04-25 #работа\n- [ ] Еженедельное собрание команды 🔁 every week on Monday ⏰ 09:00 #встреча\n- [ ] Уточнить требования клиента 🔼 📅 2026-04-23 #контроль",
+    icon: "lucide-sparkles"
+  },
+  {
+    id: "template-dataview",
+    name: "Создать Dataview",
+    prompt: "На основе моего запроса создай блок кода Obsidian Dataview. Требования:\n1. Используй синтаксис DataviewJS или DQL.\n2. Добавь необходимые фильтры и сортировку.\n3. Снабди код комментариями с пояснением каждой части.\n4. Если требуется сложная логика, используй DataviewJS.\n\nМой запрос:",
+    icon: "lucide-database"
+  },
+  {
+    id: "template-templater",
+    name: "Создать шаблон Templater",
+    prompt: "Помоги создать шаблон Obsidian Templater. Требования:\n1. Используй синтаксис Templater (<% %>).\n2. Добавь динамические переменные даты и времени.\n3. Поддержи пользовательский ввод.\n4. При необходимости используй условия и циклы.\n5. Добавь комментарии с пояснением каждой части шаблона.\n\nНазначение шаблона:",
+    icon: "lucide-file-code"
+  },
+  {
+    id: "template-mermaid",
+    name: "Создать диаграмму Mermaid",
+    prompt: "На основе выбранного текста {{selection}} создай код диаграммы Mermaid. Требования:\n1. Выбери наиболее подходящий тип диаграммы (блок-схема, диаграмма последовательности, диаграмма классов, диаграмма Ганта и т.д.).\n2. Используй понятные названия узлов.\n3. Добавь необходимые стили и комментарии.\n4. Убедись, что диаграмма корректна и может быть отрисована.\n",
+    icon: "lucide-workflow"
+  },
+  {
+    id: "template-metadata",
+    name: "Создать YAML",
+    prompt: "На основе содержимого текущей заметки {{file:content}} создай подходящую структуру YAML Frontmatter. Требования:\n1. Предложи поля на основе содержимого заметки.\n2. Включи распространённые поля (tags, aliases, date и т.д.).\n3. Предложи дополнительные пользовательские поля.\n4. Добавь комментарии с пояснением назначения каждого поля.\n\nТип заметки:",
+    icon: "lucide-file-json"
+  },
+  {
+    id: "template-callout",
+    name: "Оформить в Callout",
+    prompt: "На основе выбранного текста {{selection}} оформи его в виде блока Obsidian Callout. Требования:\n1. Выбери подходящий тип callout (note/tip/warning/danger и т.д.).\n2. Поддерживай вложенные и сворачиваемые блоки.\n3. Добавь заголовок и содержимое.\n4. При необходимости используй блоки кода или списки.\n\nТребования к содержимому:",
+    icon: "lucide-message-square"
+  },
+];
+
 export function getDefaultCustomPromptTemplates(locale: string = getCurrentLocale()): CustomPromptTemplate[] {
+  const normalizedLocale = locale.toLowerCase();
   const source = isChineseLocale(locale)
     ? DEFAULT_CUSTOM_PROMPT_TEMPLATES_ZH
-    : DEFAULT_CUSTOM_PROMPT_TEMPLATES_EN;
+    : normalizedLocale === "ja" || normalizedLocale.startsWith("ja-")
+      ? DEFAULT_CUSTOM_PROMPT_TEMPLATES_JA
+    : normalizedLocale === "ru" || normalizedLocale.startsWith("ru-")
+      ? DEFAULT_CUSTOM_PROMPT_TEMPLATES_RU
+      : DEFAULT_CUSTOM_PROMPT_TEMPLATES_EN;
 
   return source.map((template) => ({ ...template }));
 }
 
 export const DEFAULT_AI_SETTINGS: AIPluginSettings = {
   enabled: false,
+  showAIContextMenu: true,
   consentAccepted: false,
   onboardingShown: false,
   providerMode: "pkmer-first",
@@ -287,6 +427,7 @@ export const DEFAULT_AI_SETTINGS: AIPluginSettings = {
     model: "",
     temperature: 0.2,
   },
+  frontmatterPrompt: createDefaultFrontmatterPromptSettings(),
   customPromptHistory: [],
   customPromptTemplates: getDefaultCustomPromptTemplates("zh-cn"),
 };
@@ -326,4 +467,5 @@ export const PKMER_OAUTH_CONFIG = {
   desktopRedirectUri: "http://localhost:10891/editing-toolbar/callback",
   mobileRedirectUri: "obsidian://editing-toolbar-pkmer-auth",
   callbackPort: 10891,
+  callbackPath: "/editing-toolbar/callback",
 } as const;

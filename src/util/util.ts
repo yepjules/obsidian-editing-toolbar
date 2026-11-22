@@ -1,20 +1,35 @@
 import { Editor,Command,MarkdownView } from "obsidian";
 import { syntaxTree } from '@codemirror/language';
 export async function wait(delay: number) {
-  return new Promise((resolve) => setTimeout(resolve, delay));
+  return new Promise((resolve) => window.setTimeout(resolve, delay));
+}
+
+/**
+ * Safely set innerHTML on an element. Only use with trusted static HTML strings
+ * that contain no user-supplied content. This wrapper centralizes DOM writes
+ * for review and audit.
+ */
+export function safeSetInnerHTML(el: HTMLElement, html: string): void {
+  // 仅用于可信的静态模板字符串。用 DOMParser 解析后移入节点：
+  // 解析结果处于惰性文档中，不会加载图片/脚本等外部资源，比直接写 innerHTML 更安全。
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  el.textContent = "";
+  for (const node of Array.from(parsed.body.childNodes)) {
+    el.appendChild(el.ownerDocument.adoptNode(node));
+  }
 }
 // GenNonDuplicateID(3) 将生成类似 ix49wl2978w 的ID
 export function GenNonDuplicateID(randomLength: number) {
   let idStr = Date.now().toString(36)
-  idStr += Math.random().toString(36).substr(3, randomLength)
+  idStr += Math.random().toString(36).slice(3, 3 + randomLength)
   return idStr
 }
-export function findmenuID(plugin: { settings: { menuCommands: any; }; }, command: Command, issub: boolean,currentCommands:any[]) {
+export function findmenuID(plugin: { settings: { menuCommands: Command[]; }; }, command: Command, issub: boolean,currentCommands:Command[]) {
   let index;
   let res = { "index": -1, "subindex": -1 };
-  let menucmd = currentCommands
+  const menucmd = currentCommands
   if (issub) {
-    menucmd.forEach((item: { SubmenuCommands: any[]; }, idx: any) => {
+    menucmd.forEach((item: Command, idx: number) => {
       if ("SubmenuCommands" in item) {
         index = item.SubmenuCommands.findIndex((v) => v.id == command.id);
         if (index >= 0) {
@@ -25,13 +40,13 @@ export function findmenuID(plugin: { settings: { menuCommands: any; }; }, comman
     });
   }
   else {
-    index = menucmd.findIndex((v: { id: any; }) => v.id == command.id);
+    index = menucmd.findIndex((v: Command) => v.id == command.id);
     res = { "index": index, "subindex": -1 };
   }
   return res;
 }
 
-export function colorpicker(plugin: { settings: { custom_fc1: any; custom_fc2: any; custom_fc3: any; custom_fc4: any; custom_fc5: any; }; }) {
+export function colorpicker(plugin: { settings: { custom_fc1: string; custom_fc2: string; custom_fc3: string; custom_fc4: string; custom_fc5: string; }; }) {
   return `<div class='x-color-picker-wrapper'>
 <div class='x-color-picker' >
   <table class="x-color-picker-table" id='x-color-picker-table'>
@@ -148,7 +163,7 @@ export function colorpicker(plugin: { settings: { custom_fc1: any; custom_fc2: a
 </div>`;
 }
 
-export function backcolorpicker(plugin: { settings: { custom_bg1: any; custom_bg2: any; custom_bg3: any; custom_bg4: any; custom_bg5: any; }; }) {
+export function backcolorpicker(plugin: { settings: { custom_bg1: string; custom_bg2: string; custom_bg3: string; custom_bg4: string; custom_bg5: string; }; }) {
   return `<div class='x-color-picker-wrapper'>
 <div class='x-color-picker' >
   <table class="x-color-picker-table" id='x-backgroundcolor-picker-table'>
@@ -164,7 +179,7 @@ export function backcolorpicker(plugin: { settings: { custom_bg1: any; custom_bg
         <td style="background-color:rgba(240, 200, 0, 0.2)"><span></span></td>
         </tr>
         <tr class="bottom">
-        <td style="background-color:rgba(3, 135, 102, 0.2)"><span></span></td>
+        <td style="background-color:rgba(0, 176, 80, 0.2)"><span></span></td>
         <td style="background-color:rgba(3, 135, 102, 0.2)"><span></span></td>
         <td style="background-color:rgba(5, 117, 197, 0.2)"><span></span></td>
         <td style="background-color:rgba(74, 82, 199, 0.2)"><span></span></td>
@@ -210,7 +225,7 @@ export function setHeader(_str: string, editor?: Editor) {
 
     const linetext = editor.getLine(editor.getCursor().line);
     let newstr;
-    let linend = "";
+    let linend: string;
     const headingRegex = /^(\s*(?:>\s*)*(?:\[[!\w]+\]\s*)?)#{1,6}\s+/;
     const blockPrefixRegex = /^(?:\s*(?:>\s*)*(?:\[[!\w]+\]\s*)?)?(?:(?:#{1,6}\s+)|(?:[-+*]\s+)|(?:\d+\.\s+)|(?:\[[ xX]\]\s+))+/;
     const match = linetext.match(headingRegex);
@@ -237,13 +252,17 @@ export function setHeader(_str: string, editor?: Editor) {
 }
 
 
-export function setFontcolor(color: string, editor?: Editor) {
+export function setFontcolor(
+  color: string,
+  editor?: Editor,
+  plugin?: { setLastExecutedCommand(commandId: string): void },
+) {
   if (!editor) return;
 
   const selectText = editor.getSelection();
 
   if (!selectText || selectText.trim() === "") {
-    this.plugin.setLastExecutedCommand("editing-toolbar:change-font-color");
+    plugin?.setLastExecutedCommand("editing-toolbar:change-font-color");
     return;
   }
 
@@ -446,7 +465,7 @@ function processSelectionWithContext(lines: string[], startLine: number, editor:
   };
 
   // 获取 CodeMirror 视图和语法树
-  const view = (app.workspace.getActiveViewOfType(MarkdownView) as MarkdownView)?.editor.cm;
+  const view = (window.app.workspace.getActiveViewOfType(MarkdownView))?.editor.cm;
   if (!view) return;
 
   const state = view.state;
@@ -483,14 +502,14 @@ function processSelectionWithContext(lines: string[], startLine: number, editor:
 
   // 检查选中列表是否已经正确编号
   let isAlreadyNumberedCorrectly = true;
-  let expectedNumbers: number[] = [];
+  const expectedNumbers: number[] = [];
   let prevIndentLevel = -1;
 
   for (const line of lines) {
     const trimmedLine = line.trim();
     if (/^\d+\.\s/.test(trimmedLine)) {
       const indentLevel = line.match(/^\s*/)?.[0].length || 0;
-      const currentNumber = parseInt(trimmedLine.match(/^\d+/)![0], 10);
+      const currentNumber = parseInt(trimmedLine.match(/^\d+/)[0], 10);
 
       if (indentLevel !== prevIndentLevel) {
         expectedNumbers[indentLevel] = 1;
@@ -507,7 +526,7 @@ function processSelectionWithContext(lines: string[], startLine: number, editor:
   }
 
   // 处理选中部分
-  let result: string[] = [];
+  const result: string[] = [];
   const prevLineNum = startLine - 1;
   const prevLine = prevLineNum >= 0 ? editor.getLine(prevLineNum).trim() : '';
   const needsSeparationBefore = prevLine && !/^\s*$/.test(prevLine) && !prevLine.includes('ㅤ');
@@ -520,7 +539,7 @@ function processSelectionWithContext(lines: string[], startLine: number, editor:
   if (isAlreadyNumberedCorrectly) {
     result.push(...lines);
   } else {
-    let numberByIndent: { [level: number]: number } = {};
+    const numberByIndent: { [level: number]: number } = {};
     let prevLevel = -1;
 
     for (const line of lines) {
@@ -552,7 +571,7 @@ function processSelectionWithContext(lines: string[], startLine: number, editor:
 }
 
 function getListRangeForCursor(editor: Editor, currentLine: number): { startLine: number; endLine: number } {
-  let startLine = currentLine;
+  const startLine = currentLine;
   let endLine = currentLine;
 
   const currentIndent = editor.getLine(currentLine).match(/^\s*/)?.[0].length || 0;

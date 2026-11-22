@@ -25,6 +25,17 @@ export function getRequestErrorStatus(error: unknown): number | null {
     return responseStatus;
   }
 
+  // Fallback: Obsidian's requestUrl throws "Request failed, status XXX" when
+  // throw is not explicitly set to false. Parse the status from the message so
+  // auth/quota detection still works for those errors.
+  const message = (error as { message?: unknown } | null)?.message;
+  if (typeof message === "string") {
+    const match = message.match(/status\s+(\d{3})/i);
+    if (match) {
+      return Number(match[1]);
+    }
+  }
+
   return null;
 }
 
@@ -37,8 +48,15 @@ export function getAIErrorMessage(error: unknown): string {
     return error.trim();
   }
 
-  const response = (error as { response?: { json?: any; text?: unknown } } | null)?.response;
-  const responseMessage = response?.json?.error?.message || response?.json?.message || response?.text;
+  const response = (error as { response?: { json?: { error?: { message?: unknown }; message?: unknown } | null; text?: unknown } } | null)?.response;
+  // response.json is a getter that may throw SyntaxError on non-JSON bodies.
+  let parsedJson: { error?: { message?: unknown }; message?: unknown } | null;
+  try {
+    parsedJson = response?.json ?? null;
+  } catch {
+    parsedJson = null;
+  }
+  const responseMessage = parsedJson?.error?.message || parsedJson?.message || response?.text;
   if (typeof responseMessage === "string" && responseMessage.trim()) {
     return responseMessage.trim();
   }

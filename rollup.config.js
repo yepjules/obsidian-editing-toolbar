@@ -3,6 +3,8 @@ import { nodeResolve } from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 import terser from '@rollup/plugin-terser';
 import styles from 'rollup-plugin-styles';
+import { copyFileSync } from 'fs';
+import { dirname } from 'path';
 
 const isProd = process.env.BUILD === "production";
 const outputDir = "./Editing-Toolbar-Test-Vault/.obsidian/plugins/editing-toolbar";
@@ -17,7 +19,9 @@ export default {
   input: "src/plugin/main.ts",
   output: {
     dir: outputDir,
-    sourcemap: "inline",
+    // 生产构建不内嵌 sourcemap：base64 内联映射约占产物体积一半，
+    // 直接拖慢每次插件加载（启动/重新启用）时渲染进程的模块求值（issue #376 反馈）
+    sourcemap: isProd ? false : "inline",
     sourcemapExcludeSources: isProd,
     format: "cjs",
     exports: "default",
@@ -42,6 +46,13 @@ export default {
     }),
     commonjs({ include: "node_modules/**" }),
     terser(),
-    styles()
+    styles(),
+    {
+      name: 'copy-styles',
+      writeBundle(output) {
+        const outDir = output.dir || (output.file && dirname(output.file));
+        if (outDir) copyFileSync('./styles.css', `${outDir}/styles.css`);
+      },
+    },
   ],
 };

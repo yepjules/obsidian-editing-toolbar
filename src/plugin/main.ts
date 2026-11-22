@@ -2,20 +2,17 @@ import {
   Menu,
   Plugin,
   Notice,
-  Command,
-  setIcon,
   Platform,
+  Command,
   Editor,
   MarkdownView,
   ItemView,
-  ToggleComponent,
   requireApiVersion,
   App,
   debounce,
-  View,
 } from "obsidian";
 import { editingToolbarSettingTab } from '../settings/settingsTab';
-import { selfDestruct, editingToolbarPopover, quiteFormatbrushes, createFollowingbar, setFormateraser, isExistoolbar, resetToolbar } from "src/modals/editingToolbarModal";
+import { selfDestruct, editingToolbarPopover, quiteFormatbrushes, createFollowingbar, setFormateraser, isExistoolbar, resetToolbar, relayoutToolbarOverflow, hideToolbarsForSnapshot, restoreToolbarsAfterSnapshot } from "src/modals/editingToolbarModal";
 import { editingToolbarSettings, DEFAULT_SETTINGS } from "src/settings/settingsData";
 import { t } from 'src/translations/helper';
 import addIcons, {
@@ -29,16 +26,15 @@ import { UpdateNoticeModal } from "src/modals/updateModal";
 import { StatusBar } from "src/components/StatusBar";
 import { CommandsManager } from "src/commands/commands";
 import { InsertLinkModal } from "src/modals/insertLinkModal";
-import { InsertCalloutModal } from "src/modals/insertCalloutModal";
 import { AIEditorManager } from "src/ai/AIEditorManager";
 import { AI_TOOLBAR_COMMAND_ID, createAIToolbarCommand } from "src/ai/toolbarCommand";
 import { shouldShowAIFeatures } from "src/util/locale";
-import { getDefaultCustomPromptTemplates, type CustomPromptTemplate } from "src/ai/types";
+import { createDefaultFrontmatterPromptSettings, getDefaultCustomPromptTemplates, type CustomPromptTemplate } from "src/ai/types";
 
 let activeDocument: Document;
 
 // ---- Per-style appearance support (patch v3, integrated) ----
-import type { AppearanceByStyle, ToolbarStyleKey, StyleAppearanceSettings} from "src/settings/settingsData";
+import type { ToolbarStyleKey, StyleAppearanceSettings} from "src/settings/settingsData";
 
 const STYLE_KEYS: ToolbarStyleKey[] = ["top", "following", "fixed", "mobile"];
 
@@ -57,7 +53,7 @@ function ensureAppearanceStore(
     settings.appearanceByStyle = {};
   }
 
-  const store = settings.appearanceByStyle as AppearanceByStyle;
+  const store = settings.appearanceByStyle;
 
   // Ensure bucket objects exist for each style
   STYLE_KEYS.forEach((style) => {
@@ -69,13 +65,13 @@ function ensureAppearanceStore(
   // On first migration: seed all style buckets from the legacy/global fields
   if (migratingFromGlobal) {
     APPEARANCE_KEYS.forEach((key) => {
-      const legacyValue = (settings as any)[key];
+      const legacyValue = settings[key];
       if (legacyValue === undefined) return;
 
       STYLE_KEYS.forEach((style) => {
-        const bucket = store[style]!;
+        const bucket = store[style];
         if (!(key in bucket)) {
-          (bucket as any)[key] = legacyValue;
+          (bucket as unknown as Record<keyof StyleAppearanceSettings, string | number>)[key] = legacyValue;
         }
       });
     });
@@ -93,10 +89,6 @@ export interface AdmonitionDefinition  {
   copy?: boolean;
 }
 
-interface AdmonitionPluginPublic {
-  admonitions: Map<string, AdmonitionDefinition>;
-  postprocessors: Map<string, any>;
-}
 // ... 常量定义 ...
 interface EditorContextMenuAction {
   title: string;
@@ -147,6 +139,15 @@ export default class editingToolbarPlugin extends Plugin {
   private toolbarCache: Map<ToolbarStyleKey, HTMLElement> = new Map();
   private popoverCache: Map<ToolbarStyleKey, HTMLElement> = new Map();
 
+  // resize 防抖：只保留最后一次调度的重排/重建
+  private resizeRelayoutTimer: number | null = null;
+
+  // Obsidian 1.15.x 启动时先展示工作区，启动完成才移除 .app-container 上的
+  // mod-starting 类。在这个窗口里创建流内工具栏会被用户看到并扰动布局（issue #376），
+  // 因此观察该类，等启动真正结束后再创建。
+  private startupRevealObserver: MutationObserver | null = null;
+  private startupRevealFallbackTimer: number | null = null;
+
 
 
     // Initialise per-style appearance (patch v3 logic, but limited to this plugin)
@@ -157,7 +158,7 @@ export default class editingToolbarPlugin extends Plugin {
     const migratingFromGlobal = !settings.appearanceByStyle;
     ensureAppearanceStore(settings, migratingFromGlobal);
 
-    const store = settings.appearanceByStyle as AppearanceByStyle;
+    const store = settings.appearanceByStyle;
     
     const getCurrentStyle = (): ToolbarStyleKey => {
       const raw = (
@@ -165,7 +166,7 @@ export default class editingToolbarPlugin extends Plugin {
         this.positionStyle ||             // 2. live toolbar style
         settings.positionStyle ||         // 3. stored fallback
         "top"
-      ) as string;
+      );
 
       return STYLE_KEYS.includes(raw as ToolbarStyleKey)
         ? (raw as ToolbarStyleKey)
@@ -176,7 +177,7 @@ export default class editingToolbarPlugin extends Plugin {
       // Only patch properties that actually exist on settings
       if (!(key in settings)) return;
 
-      const initialGlobal = (settings as any)[key];
+      const initialGlobal = settings[key];
 
       Object.defineProperty(settings, key, {
         configurable: true,
@@ -185,22 +186,22 @@ export default class editingToolbarPlugin extends Plugin {
           const style = getCurrentStyle();
           const bucket = store[style];
           if (bucket && Object.prototype.hasOwnProperty.call(bucket, key)) {
-            return (bucket as any)[key];
+            return bucket[key];
           }
           // Fallback to the original global value
           return initialGlobal;
         },
-        set(value: any) {
+        set(value: string | number) {
           const style = getCurrentStyle();
           ensureAppearanceStore(settings, false);
-          const bucket = (settings.appearanceByStyle as AppearanceByStyle)[style]!;
-          (bucket as any)[key] = value;
+          const bucket = (settings.appearanceByStyle)[style];
+          (bucket as unknown as Record<keyof StyleAppearanceSettings, string | number>)[key] = value;
         },
       });
     });
   }
 
-  private removeToolbarCommandById(commands: any[] | undefined, commandId: string): void {
+  private removeToolbarCommandById(commands: Command[] | undefined, commandId: string): void {
     if (!Array.isArray(commands)) return;
 
     for (let index = commands.length - 1; index >= 0; index--) {
@@ -218,6 +219,23 @@ export default class editingToolbarPlugin extends Plugin {
     }
   }
 
+  private findToolbarCommandById(commands: Command[] | undefined, commandId: string): Command | null {
+    if (!Array.isArray(commands)) return null;
+
+    for (const command of commands) {
+      if (!command || typeof command !== "object") continue;
+
+      if (command.id === commandId) return command;
+
+      if (Array.isArray(command.SubmenuCommands)) {
+        const nested = this.findToolbarCommandById(command.SubmenuCommands, commandId);
+        if (nested) return nested;
+      }
+    }
+
+    return null;
+  }
+
   private syncAIToolbarCommandVisibility(): void {
     const commandGroups = [
       this.settings.menuCommands,
@@ -227,19 +245,31 @@ export default class editingToolbarPlugin extends Plugin {
       this.settings.mobileCommands,
     ];
 
+    const shouldShowAI = this.settings.ai.enabled && shouldShowAIFeatures();
+
     commandGroups.forEach((commands) => {
       if (!Array.isArray(commands)) return;
 
-      this.removeToolbarCommandById(commands, AI_TOOLBAR_COMMAND_ID);
+      const existing = this.findToolbarCommandById(commands, AI_TOOLBAR_COMMAND_ID);
 
-      if (this.settings.ai.enabled && shouldShowAIFeatures()) {
+      if (!shouldShowAI) {
+        if (existing) {
+          this.removeToolbarCommandById(commands, AI_TOOLBAR_COMMAND_ID);
+        }
+        return;
+      }
+
+      // Reuse the command instance the vault already has. Re-creating it and
+      // forcing it to the front on every save silently undid drag reordering
+      // and any renamed label or icon set in the settings.
+      if (!existing) {
         commands.unshift(createAIToolbarCommand());
       }
     });
   }
   public refreshAIAvailability(): void {
     this.syncAIToolbarCommandVisibility();
-    setTimeout(() => {
+    window.setTimeout(() => {
       dispatchEvent(new Event("editingToolbar-NewCommand"));
     }, 100);
   }
@@ -291,7 +321,9 @@ export default class editingToolbarPlugin extends Plugin {
 
     menu.addItem((item) => {
       item.setTitle(title).setIcon(icon);
-      requireApiVersion("0.15.0") ? item.setSection("info") : true;
+      if (requireApiVersion("0.15.0")) {
+        item.setSection("info");
+      }
 
       const submenu = item.setSubmenu();
       actions.forEach((action) => this.addEditorContextAction(submenu, action));
@@ -362,7 +394,7 @@ export default class editingToolbarPlugin extends Plugin {
 
     const hasSelection = editor.somethingSelected();
     const canUseImplicitBlockRewrite = Platform.isMobileApp;
-    const isCanvasScene = this.app.workspace.activeLeaf?.view?.getViewType?.() === "canvas";
+    const isCanvasScene = this.app.workspace.getActiveViewOfType(ItemView)?.getViewType() === "canvas";
 
     const primaryActions: EditorContextMenuAction[] = [
       { title: t("Trigger AI Inline Completion"), commandId: "ai-inline-completion" },
@@ -430,7 +462,9 @@ export default class editingToolbarPlugin extends Plugin {
   }
 
   private handleCanvasNodeContextMenu = (menu: Menu): void => {
-    this.addEditorContextSubmenu(menu, t("AI Tools"), "sparkles", this.buildCanvasNodeAIContextActions());
+    if (shouldShowAIFeatures() && this.settings.ai.showAIContextMenu !== false) {
+      this.addEditorContextSubmenu(menu, t("AI Tools"), "sparkles", this.buildCanvasNodeAIContextActions());
+    }
   };
 
   private handleEditorContextMenu = (
@@ -439,14 +473,13 @@ export default class editingToolbarPlugin extends Plugin {
     _view: MarkdownView,
   ): void => {
     this.addEditorContextSubmenu(menu, t("Text Tools"), "whole-word", this.buildTextContextActions(editor));
-    if (shouldShowAIFeatures()) {
+    if (shouldShowAIFeatures() && this.settings.ai.showAIContextMenu !== false) {
       this.addEditorContextSubmenu(menu, t("AI Tools"), "sparkles", this.buildAIContextActions(editor));
     }
   };
 
-  async onload(): Promise<void> {
+  async onload(): Promise<void> {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
     const currentVersion = this.manifest.version; // 设置当前版本号
-    console.log("editingToolbar v" + currentVersion + " loaded");
   
     requireApiVersion("0.15.0") ? activeDocument = activeWindow.document : activeDocument = window.document;
   
@@ -473,16 +506,15 @@ export default class editingToolbarPlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       this.statusBar = new StatusBar(this);
       this.statusBar.init();
-      
-      // Ensure toolbar respects initial visibility state after Settings Search completes
-      // Use a small delay to ensure Settings Search has finished scanning settings tabs
-      setTimeout(() => {
-        if (!this.settings.cMenuVisibility) {
-          this.handleeditingToolbar();
-        }
+
+      // 首次创建工具栏。handleeditingToolbar 内部会等 Obsidian 结束启动
+      // （移除 app-container 上的 mod-starting/mod-loading）后再真正插入 DOM，
+      // 避免启动阶段的布局抖动；同时覆盖 Settings Search 扫描完成后的可见性状态。
+      window.setTimeout(() => {
+        this.handleeditingToolbar();
       }, 100);
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         if (shouldShowAIFeatures()) {
           void this.aiManager.maybeShowAIOnboarding();
         }
@@ -490,9 +522,9 @@ export default class editingToolbarPlugin extends Plugin {
     });
     this.init_evt(activeDocument, editor);
     if (requireApiVersion("0.15.0")) {
-      this.app.workspace.on("window-open", (leaf) => {
+      this.registerEvent(this.app.workspace.on("window-open", (leaf) => {
         this.init_evt(leaf.doc, editor);
-        setTimeout(() => {
+        window.setTimeout(() => {
           if (!this.settings.cMenuVisibility) {
             return;
           }
@@ -511,7 +543,7 @@ export default class editingToolbarPlugin extends Plugin {
             editingToolbarPopover(this.app, this, "fixed", leaf.doc);
           }
         }, 50);
-      });
+      }));
     }
     const lastVersion = this.settings?.lastVersion || "0.0.0";
 
@@ -524,11 +556,10 @@ export default class editingToolbarPlugin extends Plugin {
       };
     };
     const lastVer = parseVersion(lastVersion);
-    const currentVer = parseVersion(currentVersion);
     const updateModal = new UpdateNoticeModal(this.app, this);
     const isNewInstall = lastVersion === "0.0.0";
     if (isNewInstall) {
-      updateModal.fixCommandIds();
+      void updateModal.fixCommandIds();
     }
     const needUpdateNotice =
       !isNewInstall &&
@@ -539,16 +570,16 @@ export default class editingToolbarPlugin extends Plugin {
         this.settings.commandIdsFixed = true;
         await this.saveSettings();
       }
-      setTimeout(() => {
+      window.setTimeout(() => {
         updateModal.open();
       }, 3000);
     }
     this.settings.lastVersion = currentVersion;
     await this.saveSettings();
 
-    const isThinoEnabled = app.plugins.enabledPlugins.has("obsidian-memos");
+    const isThinoEnabled = this.app.plugins.enabledPlugins.has("obsidian-memos");
     if (isThinoEnabled) {
-      // @ts-ignore - 自定义事件
+      // @ts-expect-error - 自定义事件
       this.registerEvent( this.app.workspace.on("thino-editor-created", this.handleeditingToolbar)
       );
     }
@@ -564,18 +595,18 @@ export default class editingToolbarPlugin extends Plugin {
     //  this.registerEvent(this.app.workspace.on("editor-change", this.handleeditingToolbar));
 
     // this.app.workspace.onLayoutReady(this.handleeditingToolbar_editor.bind(this));
-    if (this.settings.cMenuVisibility == true) {
-      setTimeout(() => {
-        dispatchEvent(new Event("editingToolbar-NewCommand"));
-      }, 100);
-    }
+    // 注意：不要在启动时派发 editingToolbar-NewCommand。
+    // 该事件会触发 selfDestruct + 重建工具栏 + 重建设置页 UI，而插件加载早于
+    // vault/workspace 加载，这些同步工作会落在 Obsidian 1.15.x 的启动揭示窗口里，
+    // 造成可见的布局抖动（issue #376）。工具栏由 active-leaf-change / onLayoutReady
+    // 创建即可。
     this.registerDomEvent(
       activeDocument,
       'contextmenu',
       e => {
         if (this.settings.isLoadOnMobile && Platform.isMobile && this.isFollowingToolbarActive()) {
-          const { target } = e;
-          if (target instanceof HTMLElement) {
+          const target = e.target as Node | null;
+          if (target?.instanceOf(HTMLElement)) {
             const iseditor = target.closest('.cm-editor') !== null;
             if (iseditor) {
               e.preventDefault();
@@ -634,12 +665,31 @@ this.app.workspace.onLayoutReady(async () => {
       this.app.workspace.on("editor-menu", this.handleEditorContextMenu)
           // 判断光标是否在有序列表行（简单匹配数字开头）
     );
+    // Obsidian 1.15.x 会在窗口失焦 2 秒后与退出/重载的 beforeunload 时把当前 DOM
+    // 序列化为启动快照，下次启动以冻结 iframe 先行展示。序列化 DOM 在 iframe 里的
+    // 解析结构会破坏工具栏嵌套，按钮散落各容器且脱离 visibility 继承（issue #376）。
+    // beforeunload 钩子必须先于 Obsidian 的快照保存监听执行：插件首次加载早于
+    // registerQuitHook，但会话中途"禁用→重新启用"会把重新注册的监听排到后面。
+    // 因此钩子按窗口只注册一次、跨禁用/启用周期保留（不随插件卸载移除），
+    // 保证无论何时退出，隐藏逻辑都先于快照序列化。
+    // 快照 iframe 是冻结画面、不可交互，展示工具栏没有任何意义。
+    const hookWindow = window as unknown as { __editingToolbarSnapshotHook?: () => void };
+    if (!hookWindow.__editingToolbarSnapshotHook) {
+      hookWindow.__editingToolbarSnapshotHook = () => hideToolbarsForSnapshot();
+      window.addEventListener("beforeunload", hookWindow.__editingToolbarSnapshotHook);
+    }
+    // 失焦 2 秒后的快照路径：失焦即隐藏，聚焦后恢复布局盒，可见性交给 handleeditingToolbar
+    this.registerDomEvent(window, "blur", () => hideToolbarsForSnapshot());
+    this.registerDomEvent(window, "focus", () => {
+      restoreToolbarsAfterSnapshot();
+      this.handleeditingToolbar();
+    });
     this.registerEvent(
       this.app.workspace.on("canvas:node-menu", this.handleCanvasNodeContextMenu)
     );
     this.registerEvent(
-      // @ts-ignore
-      this.app.workspace.on('url-menu', (menu: Menu, url: string, view: MarkdownView) => {
+      // @ts-expect-error - Obsidian API type mismatch
+      this.app.workspace.on('url-menu', (menu: Menu, _url: string, _view: MarkdownView) => {
         // 添加自定义菜单项
         menu.addItem((item) =>
           item
@@ -672,8 +722,8 @@ this.app.workspace.onLayoutReady(async () => {
     );
   }
 
-  async tryGetAdmonitionTypes(retries = 0): Promise<void> {
-    // @ts-ignore
+  async tryGetAdmonitionTypes(): Promise<void> {
+    // @ts-expect-error - Obsidian API type mismatch
     const admonitionPluginInstance = this.app.plugins?.getPlugin(ADMONITION_PLUGIN_ID);
     if (admonitionPluginInstance) {
        
@@ -681,13 +731,11 @@ this.app.workspace.onLayoutReady(async () => {
       }  
     }
 
-  processAdmonitionTypes(pluginInstance: any) {
+  processAdmonitionTypes(pluginInstance: unknown) {
     const admonitionPlugin = pluginInstance as {
       admonitions?: Record<string, AdmonitionDefinition>;
     };
 
-    let registeredTypes: string[] | null = null;
-    let typesSource: string | null = null;
 
     if (
       admonitionPlugin.admonitions &&
@@ -695,7 +743,6 @@ this.app.workspace.onLayoutReady(async () => {
       !Array.isArray(admonitionPlugin.admonitions) && // 确保不是数组
       Object.keys(admonitionPlugin.admonitions).length > 0
     ) {
-      registeredTypes = Object.keys(admonitionPlugin.admonitions);
       this.admonitionDefinitions = admonitionPlugin.admonitions;
    
   }  else {
@@ -705,14 +752,13 @@ this.app.workspace.onLayoutReady(async () => {
 }
 
   isLoadMobile() {
-    let screenWidth = window.innerWidth > 0 ? window.innerWidth : screen.width;
-    let isLoadOnMobile = this.settings?.isLoadOnMobile
+    const screenWidth = window.innerWidth > 0 ? window.innerWidth : screen.width;
+    const isLoadOnMobile = this.settings?.isLoadOnMobile
       ? this.settings.isLoadOnMobile
       : false;
     if (Platform.isMobileApp && !isLoadOnMobile) {
       if (screenWidth <= 768) {
         // 移动设备且屏幕宽度小于等于 768px，默认不开启toolbar
-        console.log("editing toolbar disable loading on mobile");
         return false;
       }
     }
@@ -721,6 +767,22 @@ this.app.workspace.onLayoutReady(async () => {
 
   onunload(): void {
     this.aiManager?.onunload();
+
+    // 取消尚未执行的 resize 重排/重建
+    if (this.resizeRelayoutTimer) {
+      window.clearTimeout(this.resizeRelayoutTimer);
+      this.resizeRelayoutTimer = null;
+    }
+
+    // 取消启动揭示阶段推迟的工具栏创建
+    if (this.startupRevealFallbackTimer !== null) {
+      window.clearTimeout(this.startupRevealFallbackTimer);
+      this.startupRevealFallbackTimer = null;
+    }
+    if (this.startupRevealObserver) {
+      this.startupRevealObserver.disconnect();
+      this.startupRevealObserver = null;
+    }
 
     // 注销工作区事件
     this.app.workspace.off("active-leaf-change", this.handleeditingToolbar);
@@ -739,7 +801,6 @@ this.app.workspace.onLayoutReady(async () => {
     // 销毁工具栏
     selfDestruct(this);
 
-    console.log("editingToolbar unloaded");
   }
 
   isView() {
@@ -747,7 +808,66 @@ this.app.workspace.onLayoutReady(async () => {
     return ViewUtils.isAllowedViewType(view);
   }
 
+  /** Obsidian 1.15.x 启动揭示阶段：工作区仍标记为启动中。 */
+  private isStartupRevealPending(): boolean {
+    const container = activeDocument.querySelector<HTMLElement>(".app-container");
+    if (!container) return false;
+    // 1.15.x 桌面端用 mod-starting 标记启动中（启动完成后移除）；
+    // 旧版/移动端占位工作区流程用 mod-loading。
+    return (
+      container.classList.contains("mod-starting") ||
+      container.classList.contains("mod-loading")
+    );
+  }
+
+  /**
+   * 启动揭示阶段内延后工具栏创建并返回 true。
+   * 观察 .app-container 的 class，等 mod-starting / mod-loading 移除后
+   * 在下一帧创建（赶在揭示后的首次绘制前，避免工具栏延迟出现造成二次跳动）。
+   * 另设 20 秒兜底，避免 Obsidian 后续调整启动流程时工具栏永远不出现。
+   */
+  private deferToolbarUntilRevealed(): boolean {
+    if (!this.isStartupRevealPending()) return false;
+
+    if (!this.startupRevealObserver) {
+      const container = activeDocument.querySelector<HTMLElement>(".app-container");
+      if (container) {
+        const observer = new MutationObserver(() => {
+          if (this.isStartupRevealPending()) return;
+          observer.disconnect();
+          this.startupRevealObserver = null;
+          window.requestAnimationFrame(() => this.handleeditingToolbar());
+        });
+        observer.observe(container, { attributes: true, attributeFilter: ["class"] });
+        this.startupRevealObserver = observer;
+      }
+    }
+
+    if (this.startupRevealFallbackTimer === null) {
+      this.startupRevealFallbackTimer = window.setTimeout(() => {
+        this.startupRevealFallbackTimer = null;
+        this.handleeditingToolbar();
+      }, 20000);
+    }
+    return true;
+  }
+
   handleeditingToolbar = () => {
+    // 工作区尚未就绪，或仍处于启动揭示阶段时，先不要改动视图 DOM，
+    // 否则流内工具栏会参与未稳定布局的计算（issue #376）。
+    if (!this.app.workspace.layoutReady) return;
+    if (this.deferToolbarUntilRevealed()) return;
+
+    // 已通过启动揭示守卫：清理兜底定时器/观察器
+    if (this.startupRevealFallbackTimer !== null) {
+      window.clearTimeout(this.startupRevealFallbackTimer);
+      this.startupRevealFallbackTimer = null;
+    }
+    if (this.startupRevealObserver) {
+      this.startupRevealObserver.disconnect();
+      this.startupRevealObserver = null;
+    }
+
     // Keep format-brush cursor state in sync with the toolbar state
     if (!this.formatBrushActive) {
       activeDocument.body.classList.remove("format-brush-cursor");
@@ -757,7 +877,7 @@ this.app.workspace.onLayoutReady(async () => {
     if (!this.settings.cMenuVisibility) {
       (["top", "following", "fixed"] as const).forEach((style) => {
         const el = isExistoolbar(this.app, this, style);
-        if (el) el.style.display = "none";
+        if (el) el.setCssStyles({ display: "none" });
       });
       return;
     }
@@ -768,7 +888,7 @@ this.app.workspace.onLayoutReady(async () => {
     if (!ViewUtils.isAllowedViewType(view)) {
       (["top", "following", "fixed"] as const).forEach((style) => {
         const el = isExistoolbar(this.app, this, style);
-        if (el) el.style.visibility = "hidden";
+        if (el) el.setCssStyles({ visibility: "hidden" });
       });
       return;
     }
@@ -782,7 +902,7 @@ this.app.workspace.onLayoutReady(async () => {
     if (isMarkdownView && !inSourceMode) {
       (["top", "following", "fixed"] as const).forEach((style) => {
         const el = isExistoolbar(this.app, this, style);
-        if (el) el.style.visibility = "hidden";
+        if (el) el.setCssStyles({ visibility: "hidden" });
       });
       return;
     }
@@ -791,18 +911,18 @@ this.app.workspace.onLayoutReady(async () => {
 
     // If you already added `isTopToolbarActive` earlier, this will call it.
     // If not, it falls back to a legacy-compatible check.
+    const topProbe = this as unknown as { isTopToolbarActive?: () => boolean };
     const topEnabled =
-      typeof (this as any).isTopToolbarActive === "function"
-        ? (this as any).isTopToolbarActive()
+      typeof topProbe.isTopToolbarActive === "function"
+        ? topProbe.isTopToolbarActive()
         : this.settings.enableTopToolbar ||
           (!this.settings.enableFollowingToolbar &&
             !this.settings.enableFixedToolbar &&
             this.positionStyle === "top");
 
     const followingEnabled =
-      typeof (this as any).isFollowingToolbarActive === "function"
-        ? this.isFollowingToolbarActive()
-        : this.settings.enableFollowingToolbar ||
+      this.isFollowingToolbarActive() ||
+      this.settings.enableFollowingToolbar ||
           (!this.settings.enableTopToolbar &&
             !this.settings.enableFixedToolbar &&
             this.positionStyle === "following");
@@ -820,12 +940,13 @@ this.app.workspace.onLayoutReady(async () => {
     ];
 
     // ---- Per-style handling: create / show / hide independently ----
+    let createdAnyToolbar = false;
     for (const { key, enabled } of styles) {
       const existing = isExistoolbar(this.app, this, key);
 
       if (!enabled) {
         // Style disabled in settings → hide any existing toolbar of that style.
-        if (existing) existing.style.visibility = "hidden";
+        if (existing) existing.setCssStyles({ visibility: "hidden" });
         continue;
       }
 
@@ -833,6 +954,7 @@ this.app.workspace.onLayoutReady(async () => {
       // If we don't have this toolbar yet, create it for this style.
       if (!existing) {
         editingToolbarPopover(this.app, this, key);
+        createdAnyToolbar = true;
       }
 
       const toolbar = isExistoolbar(this.app, this, key);
@@ -842,16 +964,27 @@ this.app.workspace.onLayoutReady(async () => {
         // Following toolbar only works in markdown source mode
         // For other views (Canvas, etc.), hide it
         if (!inSourceMode) {
-          toolbar.style.visibility = "hidden";
+          toolbar.setCssStyles({ visibility: "hidden" });
         } else {
           // In markdown source mode, stays hidden until text is selected.
           // Your `showFollowingToolbar` / selection handlers will reveal it.
-          toolbar.style.visibility = "hidden";
+          toolbar.setCssStyles({ visibility: "hidden" });
         }
       } else {
         // Top / Fixed: visible in markdown source mode and other allowed views
-        toolbar.style.visibility = "visible";
+        toolbar.setCssStyles({ visibility: "visible" });
       }
+    }
+
+    // 刚创建过工具栏时，下一帧用实际渲染宽度复核一次溢出分割：
+    // 创建瞬间与揭示后的首次稳定布局之间可能有微小漂移（侧边栏动画等），
+    // 提前收敛，避免个别按钮短暂挤在主栏尾部（issue #376）。
+    if (createdAnyToolbar) {
+      window.requestAnimationFrame(() => {
+        this.getEnabledToolbarStyles().forEach((styleKey) => {
+          relayoutToolbarOverflow(this.app, this, styleKey);
+        });
+      });
     }
   };
 
@@ -862,17 +995,22 @@ this.app.workspace.onLayoutReady(async () => {
   };
   
   handleeditingToolbar_resize = () => {
+    // 启动揭示阶段不要重排/重建，等工作区真正显示后由 handleeditingToolbar 处理
+    if (!this.app.workspace.layoutReady || this.isStartupRevealPending()) {
+      return false;
+    }
+
     // Only care about resizing when the toolbar is visible and top-style is active
     if (!this.settings.cMenuVisibility || !this.isTopToolbarActive()) {
       return false;
     }
 
-    const view = app.workspace.getActiveViewOfType(ItemView);
+    const view = this.app.workspace.getActiveViewOfType(ItemView);
     if (!ViewUtils.isSourceMode(view)) {
       return false;
     }
 
-    const leafwidth = this.app.workspace.activeLeaf.view.leaf.width ?? 0;
+    const leafwidth = this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf?.width ?? 0;
     if (leafwidth <= 0 || this.Leaf_Width === leafwidth) {
       return false;
     }
@@ -887,14 +1025,37 @@ this.app.workspace.onLayoutReady(async () => {
         return;
       }
 
-      setTimeout(() => {
-        resetToolbar(this);
-        editingToolbarPopover(app, this);
+      // resize 事件会连发多次，只保留最后一次调度
+      if (this.resizeRelayoutTimer) {
+        window.clearTimeout(this.resizeRelayoutTimer);
+      }
+      this.resizeRelayoutTimer = window.setTimeout(() => {
+        this.resizeRelayoutTimer = null;
+        // 优先做轻量重排：只移动溢出按钮，不销毁重建工具栏（避免闪烁与重复创建）；
+        // 任一样式结构不完整时回退到完整重建
+        const styles = this.getEnabledToolbarStyles();
+        const allRelayouted = styles.every((style) => relayoutToolbarOverflow(this.app, this, style));
+        if (!allRelayouted) {
+          resetToolbar(this);
+          editingToolbarPopover(this.app, this);
+        }
       }, 200);
     }
 
     return true;
   };
+
+  // 与 editingToolbarPopover 无样式分发一致的启用样式列表
+  private getEnabledToolbarStyles(): ToolbarStyleKey[] {
+    const styles: ToolbarStyleKey[] = [];
+    if (this.settings.enableTopToolbar) styles.push("top");
+    if (this.settings.enableFollowingToolbar) styles.push("following");
+    if (this.settings.enableFixedToolbar) styles.push("fixed");
+    if (styles.length === 0) {
+      styles.push((this.positionStyle as ToolbarStyleKey) || "top");
+    }
+    return styles;
+  }
 
   setIS_MORE_Button(status: boolean): void {
     this.IS_MORE_Button = status;
@@ -926,6 +1087,10 @@ this.app.workspace.onLayoutReady(async () => {
     const resolvedCustomPromptHistory = Array.isArray(loadedAI?.customPromptHistory)
       ? [...loadedAI.customPromptHistory]
       : [];
+    const resolvedFrontmatterPrompt = {
+      ...createDefaultFrontmatterPromptSettings(),
+      ...(loadedAI?.frontmatterPrompt || {}),
+    };
 
     this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
     this.settings.ai = {
@@ -944,6 +1109,7 @@ this.app.workspace.onLayoutReady(async () => {
         ...DEFAULT_SETTINGS.ai.customModel,
         ...(loadedAI?.customModel || {}),
       },
+      frontmatterPrompt: resolvedFrontmatterPrompt,
       customPromptHistory: resolvedCustomPromptHistory,
       customPromptTemplates: resolvedCustomPromptTemplates,
     };
@@ -997,11 +1163,11 @@ this.app.workspace.onLayoutReady(async () => {
   }
 
   // 获取当前位置样式对应的命令配置
-  getCurrentCommands(style?: string): any[] {
+  getCurrentCommands(style?: string): Command[] {
     if (!this.settings.enableMultipleConfig) {
       return this.settings.menuCommands;
     }
-    let currentstyle = style || this.positionStyle;
+    const currentstyle = style || this.positionStyle;
     // 如果移动端模式开启且在移动设备上
     if (this.settings.isLoadOnMobile && Platform.isMobileApp) {
       return this.settings.mobileCommands;
@@ -1020,7 +1186,7 @@ this.app.workspace.onLayoutReady(async () => {
   }
 
   // 更新指定样式对应的命令配置（设置页可以显式指定样式）
-updateCurrentCommands(commands: any[], style?: string): void {
+updateCurrentCommands(commands: Command[], style?: string): void {
   // 单一配置模式：一直使用 menuCommands
   if (!this.settings.enableMultipleConfig) {
     this.settings.menuCommands = commands;
@@ -1439,7 +1605,7 @@ updateCurrentCommands(commands: any[], style?: string): void {
         // 如果不是粗体，检测是否在斜体中
         if (!detectedFormat) {
           const italicRegex = /(\*|_)([^*_]+)(\*|_)/g;
-          while ((match = italicRegex.exec(lineText)) !== null) {
+          if (italicRegex.test(lineText)) {
             this.lastExecutedCommand = "editor:toggle-italics";
             this.lastExecutedCommandName = "Italic";
             detectedFormat = true;
@@ -1522,7 +1688,7 @@ updateCurrentCommands(commands: any[], style?: string): void {
 
     // 处理多行 Callout 文本，去除第二行及以后的行首 >
     const lines = cleanedText.split("\n");
-    const processedLines = lines.map((line, index) =>
+    const processedLines = lines.map((line) =>
       line.replace(/^\s*>\s*/, "")
     );
 
@@ -1576,7 +1742,7 @@ updateCurrentCommands(commands: any[], style?: string): void {
     this.commandsManager.reloadCustomCommands();
   }
 
-  init_evt(container: Document, editor: Editor) {
+  init_evt(container: Document, _editor: Editor) {
     // 重置状态
     this.resetFormatBrushStates();
 
@@ -1721,7 +1887,7 @@ updateCurrentCommands(commands: any[], style?: string): void {
     return false;
   }
 
-  private handleMiddleClickToolbar(e: MouseEvent) {
+  private handleMiddleClickToolbar(_e: MouseEvent) {
     const cmEditor = this.commandsManager.getActiveEditor();
     if (this.isFollowingToolbarActive() && cmEditor?.hasFocus()) {
       this.showFollowingToolbar(cmEditor);
@@ -1769,8 +1935,6 @@ updateCurrentCommands(commands: any[], style?: string): void {
       "ShiftRight",
     ];
 
-    const cmEditor = this.commandsManager.getActiveEditor();
-
     if (selectionKeys.includes(e.code) || e.shiftKey) {
       this.handleTextSelection();
     } else if (!e.shiftKey && this.isFollowingToolbarActive()) {
@@ -1779,10 +1943,16 @@ updateCurrentCommands(commands: any[], style?: string): void {
   };
 
   private getToolbarHostDocument(editor?: Editor): Document {
+    // 运行时 editor.cm 是 CodeMirror 6 视图（类型包声明的 CodeMirror.Editor 无 dom 字段），按实际形状收窄
+    const cmRaw: unknown = editor?.cm;
+    const cmView = cmRaw as {
+      dom?: { ownerDocument?: Document };
+      contentDOM?: { ownerDocument?: Document };
+    } | undefined;
     return (
-      (editor as any)?.cm?.dom?.ownerDocument ||
-      (editor as any)?.cm?.contentDOM?.ownerDocument ||
-      this.app.workspace.activeLeaf?.view?.containerEl?.ownerDocument ||
+      cmView?.dom?.ownerDocument ||
+      cmView?.contentDOM?.ownerDocument ||
+      this.app.workspace.getActiveViewOfType(ItemView)?.containerEl?.ownerDocument ||
       (requireApiVersion("0.15.0") ? activeWindow.document : window.document)
     );
   }
@@ -1807,7 +1977,7 @@ updateCurrentCommands(commands: any[], style?: string): void {
       hostDocument || this.getToolbarHostDocument(this.commandsManager.getActiveEditor())
     );
     if (followingToolbar && this.isFollowingToolbarActive()) {
-      followingToolbar.style.visibility = "hidden";
+      followingToolbar.setCssStyles({ visibility: "hidden" });
     }
   }
 
@@ -1826,7 +1996,7 @@ updateCurrentCommands(commands: any[], style?: string): void {
 
   private handleSelectedText(cmEditor: Editor) {
     if (this.EN_FontColor_Format_Brush) {
-      setFontcolor(this.settings.cMenuFontColor, cmEditor);
+      setFontcolor(this.settings.cMenuFontColor, cmEditor, this);
     } else if (this.EN_BG_Format_Brush) {
       setBackgroundcolor(this.settings.cMenuBackgroundColor, cmEditor);
     } else if (this.EN_Text_Format_Brush) {
@@ -1845,14 +2015,13 @@ updateCurrentCommands(commands: any[], style?: string): void {
     }
   }
 
-  private throttle(func: Function, limit: number = 100) {
+  private throttle<A extends unknown[]>(func: (...args: A) => void, limit: number = 100) {
     let inThrottle: boolean;
-    return function (this: any, ...args: any[]) {
-      const context = this;
+    return (...args: A) => {
       if (!inThrottle) {
-        func.apply(context, args);
+        func(...args);
         inThrottle = true;
-        setTimeout(() => (inThrottle = false), limit);
+        window.setTimeout(() => (inThrottle = false), limit);
       }
     };
   }
@@ -1866,7 +2035,7 @@ updateCurrentCommands(commands: any[], style?: string): void {
     const followingToolbar = isExistoolbar(this.app, this, "following", targetDocument);
 
     if (followingToolbar) {
-      followingToolbar.style.visibility = "visible";
+      followingToolbar.setCssStyles({ visibility: "visible" });
       followingToolbar.classList.add("editingToolbarFlex");
       followingToolbar.classList.remove("editingToolbarGrid");
 
@@ -1893,28 +2062,28 @@ updateCurrentCommands(commands: any[], style?: string): void {
         case "following":
           if (!this.settings.followingCommands || this.settings.followingCommands.length === 0) {
             this.settings.followingCommands = [...this.settings.menuCommands];
-            this.saveSettings();
+            void this.saveSettings();
             new Notice(t("Following style commands successfully initialized"));
           }
           break;
         case "top":
           if (!this.settings.topCommands || this.settings.topCommands.length === 0) {
             this.settings.topCommands = [...this.settings.menuCommands];
-            this.saveSettings();
+            void this.saveSettings();
             new Notice(t("Top style commands successfully initialized"));
           }
           break;
         case "fixed":
           if (!this.settings.fixedCommands || this.settings.fixedCommands.length === 0) {
             this.settings.fixedCommands = [...this.settings.menuCommands];
-            this.saveSettings();
+            void this.saveSettings();
             new Notice(t("Fixed style commands successfully initialized"));
           }
           break;
         case "mobile":
           if (!this.settings.mobileCommands || this.settings.mobileCommands.length === 0) {
             this.settings.mobileCommands = [...this.settings.menuCommands];
-            this.saveSettings();
+            void this.saveSettings();
             new Notice(t("Mobile style commands successfully initialized"));
           }
           break;

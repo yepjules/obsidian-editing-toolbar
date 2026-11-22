@@ -18,6 +18,10 @@ env:
 jobs:
     build:
         runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            id-token: write
+            attestations: write
         steps:
             - uses: actions/checkout@v5
               with:
@@ -43,7 +47,8 @@ jobs:
 
                   
                   # 使用 git log 获取提交信息，但过滤掉不需要的内容
-                  git log --pretty=format:"### %s%n%b" $PREVIOUS_TAG..${{ steps.get_version.outputs.version }} | grep -v "^Update CHANGELOG.md" | grep -v "^Update manifest.json and CHANGELOG.md for version" | grep -v "^$" > COMMITS.tmp
+                  # 过滤发布流水线自身的提交；git log 输出带 "### " 前缀，两种写法都匹配
+                  git log --pretty=format:"### %s%n%b" $PREVIOUS_TAG..${{ steps.get_version.outputs.version }} | grep -v "^### Update CHANGELOG.md" | grep -v "^### Update manifest.json and CHANGELOG.md for version" | grep -v "^### Update manifest.json, package.json and versions.json for version" | grep -v "^$" > COMMITS.tmp
                   
                   # 处理提交信息，去除重复标题
                   PREV_TITLE=""
@@ -117,11 +122,21 @@ jobs:
                   npm run build
                   # 为发布准备文件
                   mkdir ${{ env.PLUGIN_NAME }}
-                  # 从实际构建输出目录复制文件
-                  cp ${{ env.OUTPUT_DIR }}/main.js ${{ env.OUTPUT_DIR }}/styles.css ./manifest.json ${{ env.PLUGIN_NAME }}/
-                  zip -r ${{ env.PLUGIN_NAME }}.zip ${{ env.PLUGIN_NAME }}
+                  # main.js 来自构建输出目录，styles.css 和 manifest.json 来自仓库根目录
+                  cp ${{ env.OUTPUT_DIR }}/main.js ./styles.css ./manifest.json ${{ env.PLUGIN_NAME }}/
+                  # 官方要求 zip 根层级只包含 main.js / manifest.json / styles.css，禁止嵌套目录
+                  zip -j ${{ env.PLUGIN_NAME }}.zip ${{ env.PLUGIN_NAME }}/main.js ${{ env.PLUGIN_NAME }}/styles.css ${{ env.PLUGIN_NAME }}/manifest.json
                   ls
             
+            - name: Attest build provenance
+              uses: actions/attest-build-provenance@v2
+              with:
+                  subject-path: |
+                    ${{ env.PLUGIN_NAME }}.zip
+                    ${{ env.OUTPUT_DIR }}/main.js
+                    ./manifest.json
+                    ./styles.css
+
             - name: Create Release
               id: create_release
               uses: softprops/action-gh-release@v2
@@ -136,7 +151,7 @@ jobs:
                     ${{ env.PLUGIN_NAME }}.zip
                     ${{ env.OUTPUT_DIR }}/main.js
                     ./manifest.json
-                    ${{ env.OUTPUT_DIR }}/styles.css
+                    ./styles.css
                   token: ${{ secrets.GITHUB_TOKEN }}
             
             - name: Commit updated files
@@ -146,4 +161,6 @@ jobs:
                 git config --local user.name "GitHub Action"
                 git add manifest.json CHANGELOG.md
                 git commit -m "Update manifest.json and CHANGELOG.md for version ${{ steps.get_version.outputs.version }}" || echo "No changes to commit"
+                # 回推前先与远端同步，避免期间 master 有新提交导致 non-fast-forward 失败
+                git pull --rebase origin master || true
                 git push origin HEAD:master

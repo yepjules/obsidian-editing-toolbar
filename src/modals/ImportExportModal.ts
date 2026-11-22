@@ -1,6 +1,6 @@
-import { settings } from "cluster";
-import { App, Modal, Setting, Notice, TextAreaComponent, ButtonComponent } from "obsidian";
+import { App, Modal, Setting, Notice, TextAreaComponent, ButtonComponent, Command } from "obsidian";
 import type editingToolbarPlugin from "src/plugin/main";
+import type { editingToolbarSettings } from "src/settings/settingsData";
 import { t } from 'src/translations/helper';
 import { ConfirmModal } from "src/modals/ConfirmModal";
 export class ImportExportModal extends Modal {
@@ -59,22 +59,22 @@ export class ImportExportModal extends Modal {
       // 添加导出内容文本区域
       const exportContainer = contentEl.createDiv('export-container');
 
-      exportContainer.style.border = '1px solid var(--background-modifier-border)';
-      exportContainer.style.padding = '10px';
-      exportContainer.style.borderRadius = '5px';
+      exportContainer.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+      exportContainer.setCssStyles({ padding: '10px' });
+      exportContainer.setCssStyles({ borderRadius: '5px' });
 
       this.textArea = new TextAreaComponent(exportContainer);
       this.textArea
         .setValue('')
         .setPlaceholder(t('Loading...'))
         .then(textArea => {
-          textArea.inputEl.style.width = '100%';
-          textArea.inputEl.style.height = '200px';
-          textArea.inputEl.style.fontFamily = 'monospace';
-          textArea.inputEl.style.fontSize = '12px';
-          textArea.inputEl.style.padding = '8px';
-          textArea.inputEl.style.border = '1px solid var(--background-modifier-border)';
-          textArea.inputEl.style.borderRadius = '4px';
+          textArea.inputEl.setCssStyles({ width: '100%' });
+          textArea.inputEl.setCssStyles({ height: '200px' });
+          textArea.inputEl.setCssStyles({ fontFamily: 'monospace' });
+          textArea.inputEl.setCssStyles({ fontSize: '12px' });
+          textArea.inputEl.setCssStyles({ padding: '8px' });
+          textArea.inputEl.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+          textArea.inputEl.setCssStyles({ borderRadius: '4px' });
         });
 
       this.updateExportContent();
@@ -82,9 +82,9 @@ export class ImportExportModal extends Modal {
 
       // 添加复制按钮
       const buttonContainer = contentEl.createDiv('import-export-button-container');
-      buttonContainer.style.display = 'flex';
-      buttonContainer.style.justifyContent = 'flex-end';
-      buttonContainer.style.marginTop = '16px';
+      buttonContainer.setCssStyles({ display: 'flex' });
+      buttonContainer.setCssStyles({ justifyContent: 'flex-end' });
+      buttonContainer.setCssStyles({ marginTop: '16px' });
 
       const copyButton = buttonContainer.createEl('button', {
         text: t('Copy to Clipboard'),
@@ -105,7 +105,7 @@ export class ImportExportModal extends Modal {
       // 导入模式
 
       // 添加导入模式选择
-      const importModeSetting = new Setting(contentEl)
+      new Setting(contentEl)
         .setName(t('Import Mode'))
         .setDesc(t('Choose how to import the configuration'))
         .addDropdown(dropdown => {
@@ -121,22 +121,22 @@ export class ImportExportModal extends Modal {
         });
       const importContainer = contentEl.createDiv('import-container');
 
-      importContainer.style.border = '1px solid var(--background-modifier-border)';
-      importContainer.style.padding = '10px';
-      importContainer.style.borderRadius = '5px';
+      importContainer.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+      importContainer.setCssStyles({ padding: '10px' });
+      importContainer.setCssStyles({ borderRadius: '5px' });
 
       this.textArea = new TextAreaComponent(importContainer);
       this.textArea
         .setValue('')
         .setPlaceholder(t('Paste configuration here...'))
         .then(textArea => {
-          textArea.inputEl.style.width = '100%';
-          textArea.inputEl.style.height = '200px';
-          textArea.inputEl.style.fontFamily = 'monospace';
-          textArea.inputEl.style.fontSize = '12px';
-          textArea.inputEl.style.padding = '8px';
-          textArea.inputEl.style.border = '1px solid var(--background-modifier-border)';
-          textArea.inputEl.style.borderRadius = '4px';
+          textArea.inputEl.setCssStyles({ width: '100%' });
+          textArea.inputEl.setCssStyles({ height: '200px' });
+          textArea.inputEl.setCssStyles({ fontFamily: 'monospace' });
+          textArea.inputEl.setCssStyles({ fontSize: '12px' });
+          textArea.inputEl.setCssStyles({ padding: '8px' });
+          textArea.inputEl.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+          textArea.inputEl.setCssStyles({ borderRadius: '4px' });
         });
 
 
@@ -144,9 +144,9 @@ export class ImportExportModal extends Modal {
 
       // 添加导入按钮
       const buttonContainer = contentEl.createDiv('import-export-button-container');
-      buttonContainer.style.display = 'flex';
-      buttonContainer.style.justifyContent = 'flex-end';
-      buttonContainer.style.marginTop = '16px';
+      buttonContainer.setCssStyles({ display: 'flex' });
+      buttonContainer.setCssStyles({ justifyContent: 'flex-end' });
+      buttonContainer.setCssStyles({ marginTop: '16px' });
 
       new Setting(buttonContainer)
         .addButton(button => {
@@ -154,30 +154,30 @@ export class ImportExportModal extends Modal {
             .setIcon('import')
             .setButtonText(t('Import Configuration'))
             .onClick(() => {
-              this.importConfiguration();
+              void this.importConfiguration();
             });
         });
 
 
       // 添加警告信息
       const warningDiv = contentEl.createDiv('import-export-warning');
-      warningDiv.style.marginTop = '16px';
-      warningDiv.style.padding = '8px 12px';
-      warningDiv.style.backgroundColor = 'rgba(var(--color-red-rgb), 0.1)';
-      warningDiv.style.borderRadius = '4px';
-      warningDiv.style.border = '1px solid rgba(var(--color-red-rgb), 0.3)';
+      warningDiv.setCssStyles({ marginTop: '16px' });
+      warningDiv.setCssStyles({ padding: '8px 12px' });
+      warningDiv.setCssStyles({ backgroundColor: 'rgba(var(--color-red-rgb), 0.1)' });
+      warningDiv.setCssStyles({ borderRadius: '4px' });
+      warningDiv.setCssStyles({ border: '1px solid rgba(var(--color-red-rgb), 0.3)' });
 
       const warningParagraph = warningDiv.createEl('p', {
         text: t('Warning: Update mode will add new items and update existing ones.'),
         cls: 'warning-text'
       });
-      warningParagraph.style.margin = '0';
+      warningParagraph.setCssStyles({ margin: '0' });
       this.warningContent = warningParagraph;
     }
   }
 
   updateExportContent() {
-    let exportContent: any = {
+    let exportContent: Record<string, unknown> & Partial<editingToolbarSettings> = {
       // 添加元数据
       _exportInfo: {
         version: this.plugin.manifest.version,
@@ -273,7 +273,7 @@ export class ImportExportModal extends Modal {
   }
 
   // 验证导出内容
-  private validateExportContent(exportContent: any) {
+  private validateExportContent(exportContent: Record<string, unknown> & Partial<editingToolbarSettings>) {
     // 确保数组类型的字段不为null
     ['menuCommands', 'followingCommands', 'topCommands', 'fixedCommands', 'mobileCommands', 'customCommands'].forEach(key => {
       if (key in exportContent && !exportContent[key]) {
@@ -463,7 +463,7 @@ export class ImportExportModal extends Modal {
   }
 
   // 执行覆盖导入
-  performOverwriteImport(importData: any) {
+  performOverwriteImport(importData: Partial<editingToolbarSettings>) {
     // 导入一般设置
     this.importGeneralSettings(importData);
 
@@ -494,7 +494,7 @@ export class ImportExportModal extends Modal {
   }
 
   // 执行更新导入
-  performUpdateImport(importData: any) {
+  performUpdateImport(importData: Partial<editingToolbarSettings>) {
     // 导入一般设置
     this.importGeneralSettings(importData);
 
@@ -523,13 +523,13 @@ export class ImportExportModal extends Modal {
       this.updateCommandArray(this.plugin.settings.mobileCommands, importData.mobileCommands);
     }
   }
-  private updateCommandArray(targetArray: any[], sourceArray: any[]) {
+  private updateCommandArray(targetArray: Command[], sourceArray: Command[]) {
     if (!targetArray) {
       return sourceArray.slice();
     }
 
     // 遍历导入的命令
-    sourceArray.forEach((importedCommand: any) => {
+    sourceArray.forEach((importedCommand) => {
       // 检查命令是否已存在
       const existingCommandIndex = targetArray.findIndex(
         cmd => cmd.id === importedCommand.id
@@ -555,8 +555,8 @@ export class ImportExportModal extends Modal {
     return targetArray;
   }
   // 导入一般设置
-  importGeneralSettings(importData: any) {
-    const generalSettings = [
+  importGeneralSettings(importData: Partial<editingToolbarSettings>) {
+    const generalSettings: Array<keyof editingToolbarSettings> = [
       'positionStyle', 'aestheticStyle', 'appendMethod', 'autohide','Iscentered',
       'isLoadOnMobile', 'cMenuNumRows', 'enableMultipleConfig',
       'custom_bg1', 'custom_bg2', 'custom_bg3', 'custom_bg4', 'custom_bg5',
@@ -566,7 +566,7 @@ export class ImportExportModal extends Modal {
 
     generalSettings.forEach(key => {
       if (importData[key] !== undefined) {
-        (this.plugin.settings as any)[key] = importData[key];
+        (this.plugin.settings as unknown as Record<string, unknown>)[key] = importData[key];
       }
     });
   }
@@ -587,7 +587,7 @@ export class ImportExportModal extends Modal {
       'cMenuToolbar-Divider-Line': 'editingToolbar-Divider-Line',
     };
 
-    const fixCommandsInArray = (commands: any[]) => {
+    const fixCommandsInArray = (commands: Command[]) => {
       if (!commands || !Array.isArray(commands)) return;
 
       commands.forEach(cmd => {
@@ -612,7 +612,7 @@ export class ImportExportModal extends Modal {
   }
 
   // 恢复备份
-  restoreBackup(backup: any) {
+  restoreBackup(backup: Partial<editingToolbarSettings>) {
     this.plugin.settings.positionStyle = backup.positionStyle;
     this.plugin.settings.menuCommands = backup.menuCommands;
     this.plugin.settings.customCommands = backup.customCommands;

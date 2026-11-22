@@ -13,14 +13,16 @@ export class TextEnhancement {
     }
 
     const mdPattern =
-      /(^#+\s|(?<=^|\s*)#|^>|^\- \[( |x)\]|^\+ |<[^<>]+>|^1\. |^\-+$|^\*+$|==|\*+|~~|```|!*\[\[|\]\])/gm;
-    let plainText = selection
-      .replace(/\[([^\[\]]*)\]\([^\(\)]+\)/gim, "$1")
-      .replace(mdPattern, "")
+      /(^#+\s|(^|\s+)#|^>|- \[( |x)\]|^\+ |<[^<>]+>|^1\. |^-+$|^\*+$|==|\*+|~~|```|!*\[\[|\]\])/gm;
+    const plainText = selection
+      // Obsidian 1.14 彩色高亮的颜色 emoji（==🟠文字==）属于格式，一并去掉
+      .replace(/==(?:🔴|🟠|🟡|🟢|🔵|🟣)/g, "==")
+      .replace(/\[([^[\]]*)\]\([^()]+\)/gim, "$1")
+      .replace(mdPattern, "$2")
       .replace(/^[ ]+|[ ]+$/gm, "")
       .replace(/(\r\n|\n)+/gm, "\n");
 
-    navigator.clipboard.writeText(plainText);
+    void navigator.clipboard.writeText(plainText);
     new Notice(t("Plain text copied to clipboard"));
   }
 
@@ -140,7 +142,7 @@ export class TextEnhancement {
    */
   private static detectPattern(text: string): RegExp | null {
     // 模式 A: 阿拉伯数字列表 "1. ", "2. " (必须后面跟着点和空格，防止误伤小数)
-    const numberedList = /\s?\d+[\.、]\s?/g;
+    const numberedList = /\s?\d+[.、]\s?/g;
 
     // 模式 B: 箭头或符号分隔 "→", "=>", ">"
     const arrowSymbol = /\s?[→=>]\s?/g;
@@ -237,7 +239,7 @@ export class TextEnhancement {
       processed = processed.replace(/[ \t]+$/gm, "");
 
       editor.replaceSelection(processed);
-    } catch (err) {
+    } catch {
       new Notice(t("Paste failed"));
     }
   }
@@ -434,7 +436,7 @@ export class TextEnhancement {
 
         // 2. 智能清理：移除行首现有的数字序号模式 (如 "1. ", "2) ", "3、")
         // 正则解释：匹配开头可选的空格 + 数字 + [点/右括号/顿号] + 可选空格
-        const cleanLine = line.replace(/^\s*\d+[\.\)）、]?\s*/, "");
+        const cleanLine = line.replace(/^\s*\d+[.)）、]?\s*/, "");
 
         // 3. 组合新序号
         const numberedLine = `${prefix}${currentNum}${separator}${cleanLine}`;
@@ -487,7 +489,7 @@ export class TextEnhancement {
       } else {
         new Notice(t("No matches found"));
       }
-    } catch (e) {
+    } catch {
       new Notice(t("Extraction failed"));
     }
   }
@@ -517,7 +519,7 @@ export class TextEnhancement {
     let result = "";
 
     for (let i = 0; i < lines.length; i++) {
-      let currentLine = options.trimLines ? lines[i].trim() : lines[i];
+      const currentLine = options.trimLines ? lines[i].trim() : lines[i];
 
       // 处理空行
       if (currentLine === "") {
@@ -571,7 +573,7 @@ export class TextEnhancement {
       .map((l) => l.match(listRegex))
       .filter((m) => m && m[2].length > 0)
       .map((m) => {
-        const len = m![2].replace(/\t/g, "    ").length;
+        const len = m[2].replace(/\t/g, "    ").length;
         return len;
       });
     const finalTabSize = indents.length > 0 ? Math.min(...indents) : 4;
@@ -588,8 +590,8 @@ export class TextEnhancement {
     });
 
     // 2. 状态机解析
-    let preText: string[] = [];
-    let tableRows: string[][] = [];
+    const preText: string[] = [];
+    const tableRows: string[][] = [];
     let currentRow: string[] = [];
     let isInsideTable = false;
 
@@ -689,7 +691,7 @@ export class TextEnhancement {
       })
       .join("\n");
 
-    let tableMarkdown = header + sep + body;
+    const tableMarkdown = header + sep + body;
 
     // 组装前置、表格、后置内容
     let finalContent = "";

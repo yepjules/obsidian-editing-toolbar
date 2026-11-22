@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, setIcon, TextComponent } from "obsidian";
+import { App, Modal, Setting, Notice, setIcon, TextComponent, Command } from "obsidian";
 import editingToolbarPlugin from "src/plugin/main";
 import { ChooseFromIconList } from "src/modals/suggesterModals";
 import { RegexCommandModal } from "src/modals/RegexCommandModal";
@@ -56,8 +56,8 @@ export class CustomCommandModal extends Modal {
 
     // 添加切换到正则表达式命令的按钮
     const switchButtonContainer = contentEl.createDiv('switch-to-regex-container');
-    switchButtonContainer.style.marginBottom = '20px';
-    switchButtonContainer.style.textAlign = 'center';
+    switchButtonContainer.setCssStyles({ marginBottom: '20px' });
+    switchButtonContainer.setCssStyles({ textAlign: 'center' });
 
     const switchButton = switchButtonContainer.createEl('button', {
       text: t('Switch Regex Command Window')
@@ -68,7 +68,7 @@ export class CustomCommandModal extends Modal {
       new RegexCommandModal(this.app, this.plugin, null).open();
     });
 
-    const commandIdSetting = new Setting(contentEl)
+    new Setting(contentEl)
       .setName(t('Command ID'))
       .setDesc(t('Unique identifier, no spaces, e.g.: "my-custom-format"'))
       .addText(text => {
@@ -83,7 +83,7 @@ export class CustomCommandModal extends Modal {
             this.commandId = value;
             // 更新命令ID输入框的值
 
-            if (this.commandNameInput) {
+            if (this.commandNameInput) {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
               this.commandNameInput.setValue(value);
               this.commandName = value;
             }
@@ -92,7 +92,7 @@ export class CustomCommandModal extends Modal {
         return text;
       });
 
-    const commandNameSetting = new Setting(contentEl)
+    new Setting(contentEl)
       .setName(t('Command Name'))
       .setDesc(t('Displayed name in toolbar and menu'))
       .addText(text => this.commandNameInput = text
@@ -165,23 +165,23 @@ function addSpecialCharButtons(setting: Setting, input: HTMLInputElement) {
   
   // 添加按钮容器
   const buttonContainer = setting.controlEl.createDiv({ cls: 'special-char-buttons' });
-  buttonContainer.style.display = 'flex';
-  buttonContainer.style.flexWrap = 'wrap';
-  buttonContainer.style.gap = '5px';
-  buttonContainer.style.marginTop = '5px';
+  buttonContainer.setCssStyles({ display: 'flex' });
+  buttonContainer.setCssStyles({ flexWrap: 'wrap' });
+  buttonContainer.setCssStyles({ gap: '5px' });
+  buttonContainer.setCssStyles({ marginTop: '5px' });
   
   // 为每个特殊字符创建一个可复制的按钮
   specialCharButtons.forEach(({ placeholder, label }) => {
     const charContainer = buttonContainer.createDiv({ cls: 'char-copy-container' });
-    charContainer.style.position = 'relative';
-    charContainer.style.display = 'inline-block';
+    charContainer.setCssStyles({ position: 'relative' });
+    charContainer.setCssStyles({ display: 'inline-block' });
     
     const button = charContainer.createEl('button', { text: label });
-    button.style.padding = '2px 6px';
-    button.style.fontSize = '12px';
-    button.style.minWidth = 'auto';
-    button.style.border = '1px solid var(--background-modifier-border)';
-    button.style.cursor = 'pointer';
+    button.setCssStyles({ padding: '2px 6px' });
+    button.setCssStyles({ fontSize: '12px' });
+    button.setCssStyles({ minWidth: 'auto' });
+    button.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
+    button.setCssStyles({ cursor: 'pointer' });
     button.setAttribute('data-char', placeholder);
     
     // 添加复制功能
@@ -191,22 +191,22 @@ function addSpecialCharButtons(setting: Setting, input: HTMLInputElement) {
         .then(() => {
           // 显示复制成功提示
           const tooltip = charContainer.createDiv({ cls: 'copy-tooltip' });
-          tooltip.style.position = 'absolute';
-          tooltip.style.bottom = '100%';
-          tooltip.style.left = '50%';
-          tooltip.style.transform = 'translateX(-50%)';
-          tooltip.style.backgroundColor = 'var(--background-modifier-success)';
-          tooltip.style.color = 'white';
-          tooltip.style.padding = '2px 6px';
-          tooltip.style.borderRadius = '4px';
-          tooltip.style.fontSize = '12px';
-          tooltip.style.pointerEvents = 'none';
-          tooltip.style.whiteSpace = 'nowrap';
-          tooltip.style.zIndex = '100';
+          tooltip.setCssStyles({ position: 'absolute' });
+          tooltip.setCssStyles({ bottom: '100%' });
+          tooltip.setCssStyles({ left: '50%' });
+          tooltip.setCssStyles({ transform: 'translateX(-50%)' });
+          tooltip.setCssStyles({ backgroundColor: 'var(--background-modifier-success)' });
+          tooltip.setCssStyles({ color: 'white' });
+          tooltip.setCssStyles({ padding: '2px 6px' });
+          tooltip.setCssStyles({ borderRadius: '4px' });
+          tooltip.setCssStyles({ fontSize: '12px' });
+          tooltip.setCssStyles({ pointerEvents: 'none' });
+          tooltip.setCssStyles({ whiteSpace: 'nowrap' });
+          tooltip.setCssStyles({ zIndex: '100' });
           tooltip.textContent = '已复制!';
           
           // 2秒后移除提示
-          setTimeout(() => {
+          window.setTimeout(() => {
             tooltip.remove();
           }, 2000);
         })
@@ -217,13 +217,13 @@ function addSpecialCharButtons(setting: Setting, input: HTMLInputElement) {
     
     // 添加悬停效果
     button.addEventListener('mouseenter', () => {
-      button.style.backgroundColor = 'var(--interactive-accent)';
-      button.style.color = 'var(--text-on-accent)';
+      button.setCssStyles({ backgroundColor: 'var(--interactive-accent)' });
+      button.setCssStyles({ color: 'var(--text-on-accent)' });
     });
     
     button.addEventListener('mouseleave', () => {
-      button.style.backgroundColor = '';
-      button.style.color = '';
+      button.setCssStyles({ backgroundColor: '' });
+      button.setCssStyles({ color: '' });
     });
   });
    
@@ -268,7 +268,7 @@ const suffixSetting = new Setting(contentEl)
 addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('input'));
 
 
-    const charSetting = new Setting(contentEl)
+    new Setting(contentEl)
       .setName(t('Cursor Position Offset'))
       .setDesc(t('Default 0, format will keep the text selected'))
       .addText(text => text
@@ -276,7 +276,7 @@ addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('inpu
         .onChange(value => this.char = parseInt(value) || 0)
       );
 
-    const lineSetting = new Setting(contentEl)
+    new Setting(contentEl)
       .setName(t('Line Offset'))
       .setDesc(t('Line offset of cursor after formatting'))
       .addText(text => text
@@ -302,7 +302,7 @@ addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('inpu
     if (this.icon) {
       try {
         setIcon(this.iconDisplay, this.icon);
-      } catch (e) {
+      } catch {
         this.iconDisplay.setText(this.icon);
       }
     }
@@ -330,7 +330,7 @@ addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('inpu
             if (this.icon) {
               try {
                 setIcon(this.iconDisplay, this.icon);
-              } catch (e) {
+              } catch {
                 this.iconDisplay.setText(this.icon);
               }
             }
@@ -420,9 +420,9 @@ addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('inpu
           }
 
           // 保存设置并关闭模态框
-          this.plugin.saveSettings().then(() => {
+          void this.plugin.saveSettings().then(() => {
             this.close();
-            setTimeout(() => {
+            window.setTimeout(() => {
               dispatchEvent(new Event("editingToolbar-NewCommand"));
               this.plugin.reloadCustomCommands();
             }, 100);
@@ -435,7 +435,7 @@ addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('inpu
       );
 
     // 设置光标聚焦逻辑
-    setTimeout(() => {
+    window.setTimeout(() => {
       if (this.commandIndex)
         this.commandIdInput.inputEl.focus();
       else
@@ -444,7 +444,7 @@ addSpecialCharButtons(suffixSetting, suffixSetting.controlEl.querySelector('inpu
   }
 
   // 添加更新命令图标的辅助方法
-  private updateCommandIcon(commands: any[], commandId: string) {
+  private updateCommandIcon(commands: Command[], commandId: string) {
     if (!commands) return;
 
     commands.forEach(cmd => {

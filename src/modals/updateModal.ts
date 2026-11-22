@@ -5,8 +5,7 @@ import {
   Notice,
   request,
   MarkdownRenderer,
-  MarkdownView,
-  Component,
+  moment,
 } from "obsidian";
 import type editingToolbarPlugin from "src/plugin/main";
 import { DEFAULT_SETTINGS } from "src/settings/settingsData";
@@ -35,40 +34,44 @@ export class UpdateNoticeModal extends Modal {
   }
 
   async loadChangelog() {
-    try {
-      // 尝试从 GitHub 获取最新版本的 CHANGELOG.md 文件
-      const response = await request({
-        url: `https://raw.githubusercontent.com/PKM-er/obsidian-editing-toolbar/master/CHANGELOG.md`,
-        method: "GET",
-      });
+    // 中文用户读 CHANGELOG.md，其他语言读英文版 CHANGELOG-en.md（issue #365）
+    const changelogFiles = moment.locale().startsWith("zh")
+      ? ["CHANGELOG.md"]
+      : ["CHANGELOG-en.md", "CHANGELOG.md"];
+    const latestSection = (markdown: string): string => {
+      const lines = markdown.split("\n");
+      const content: string[] = [];
+      let isLatestVersion = false;
 
-      if (response) {
-        // 解析 Markdown 内容，提取最新版本的更新说明
-        const lines = response.split("\n");
-        let latestVersion = "";
-        let content = [];
-        let isLatestVersion = false;
-
-        for (const line of lines) {
-          if (line.startsWith("## ") && !latestVersion) {
-            latestVersion = line.substring(3).trim();
-            isLatestVersion = true;
-            content.push(line);
-          } else if (line.startsWith("## ") && isLatestVersion) {
-            // 遇到下一个版本标题，结束收集
-            break;
-          } else if (isLatestVersion) {
-            content.push(line);
-          }
+      for (const line of lines) {
+        if (line.startsWith("## ")) {
+          if (isLatestVersion) break; // 遇到下一个版本标题，结束收集
+          isLatestVersion = true;
         }
-
-        this.changelogContent = content.join("\n");
-      } else {
-        throw new Error("无法获取 Changelog 内容");
+        if (isLatestVersion) content.push(line);
       }
-    } catch (error) {
-      console.error("加载 Changelog 时出错:", error);
-      this.changelogContent = `### 无法加载更新说明\n\n请[点击此处查看最新更新说明](https://github.com/PKM-er/obsidian-editing-toolbar/blob/master/CHANGELOG.md)`;
+      return content.join("\n");
+    };
+
+    for (let i = 0; i < changelogFiles.length; i++) {
+      try {
+        const response = await request({
+          url: `https://raw.githubusercontent.com/PKM-er/obsidian-editing-toolbar/master/${changelogFiles[i]}`,
+          method: "GET",
+        });
+
+        if (response) {
+          this.changelogContent = latestSection(response);
+          if (this.changelogContent.trim()) break;
+        }
+        throw new Error("Empty changelog content");
+      } catch (error) {
+        console.error(`加载 ${changelogFiles[i]} 时出错:`, error);
+        // 语言对应的 changelog 加载失败时回退到下一个（最终中文版），
+        // 全部失败才显示错误提示
+        if (i < changelogFiles.length - 1) continue;
+        this.changelogContent = `### Unable to load the changelog\n\nPlease [open the latest changelog here](https://github.com/PKM-er/obsidian-editing-toolbar/blob/master/CHANGELOG.md).`;
+      }
     }
 
     this.changelogLoaded = true;
@@ -83,11 +86,11 @@ export class UpdateNoticeModal extends Modal {
       this.changelogContentEl.empty();
 
       // 渲染 Markdown 内容
-      MarkdownRenderer.renderMarkdown(
+      void MarkdownRenderer.renderMarkdown(
         this.changelogContent,
         this.changelogContentEl,
         "",
-        this.plugin as any
+        this.plugin
       );
     }
   }
@@ -276,7 +279,6 @@ export class UpdateNoticeModal extends Modal {
   }
 
   async reloadPlugin(pluginName: string): Promise<void> {
-    // @ts-ignore
     const { plugins } = this.app;
     try {
       await plugins.disablePlugin(pluginName);
@@ -312,7 +314,7 @@ export class UpdateNoticeModal extends Modal {
       );
 
       // 重新加载插件
-      this.reloadPlugin(this.plugin.manifest.id);
+      void this.reloadPlugin(this.plugin.manifest.id);
       this.close();
     } catch (error) {
       console.error("恢复默认设置时出错:", error);
@@ -326,6 +328,9 @@ export class UpdateNoticeModal extends Modal {
 
   onOpen() {
     const { contentEl } = this;
+
+    // 作用域类：changelog 样式统一放在 styles.css，避免动态注入 <style>
+    contentEl.addClass("editing-toolbar-update-modal");
 
     contentEl.createEl("h2", {
       text: `${this.plugin.manifest.name} v${this.plugin.manifest.version} · ${t("Tips")}`,
@@ -362,8 +367,8 @@ export class UpdateNoticeModal extends Modal {
     this.changelogContentEl.setText(t("Loading changelog..."));
 
     // 异步加载更新日志，不阻塞界面显示
-    setTimeout(() => {
-      this.loadChangelog();
+    window.setTimeout(() => {
+      void this.loadChangelog();
     }, 100);
 
     // 数据修复按钮
@@ -408,8 +413,12 @@ export class UpdateNoticeModal extends Modal {
       .setDesc(t("Open the complete changelog in your browser"))
       .addButton((button) =>
         button.setButtonText(t("Open changelog")).onClick(() => {
+          // 与弹窗内容保持一致：中文读 CHANGELOG.md，其他语言读英文版
+          const changelogFile = moment.locale().startsWith("zh")
+            ? "CHANGELOG.md"
+            : "CHANGELOG-en.md";
           window.open(
-            "https://github.com/PKM-er/obsidian-editing-toolbar/blob/master/CHANGELOG.md",
+            `https://github.com/PKM-er/obsidian-editing-toolbar/blob/master/${changelogFile}`,
             "_blank"
           );
         })
@@ -421,27 +430,6 @@ export class UpdateNoticeModal extends Modal {
         this.close();
       })
     );
-
-    // 添加样式
-    contentEl.createEl("style", {
-      text: `
-            .changelog-container {
-                margin-top: 20px;
-                margin-bottom: 20px;
-                padding: 10px;
-                border: 1px solid var(--background-modifier-border);
-                border-radius: 5px;
-                max-height: 200px;
-                overflow-y: auto;
-            }
-            .changelog-content {
-                padding: 0 10px;
-            }
-            .changelog-content a {
-                text-decoration: underline;
-            }
-            `,
-    });
   }
 
   onClose() {

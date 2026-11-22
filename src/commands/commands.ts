@@ -3,6 +3,7 @@ import {
   Command,
   Notice,
   MarkdownView,
+  ItemView,
   htmlToMarkdown,
 } from "obsidian";
 
@@ -10,7 +11,6 @@ import { setMenuVisibility } from "src/util/statusBarConstants";
 import {
   selfDestruct,
   setFormateraser,
-  quiteFormatbrushes,
 } from "src/modals/editingToolbarModal";
 import {
   setHeader,
@@ -30,15 +30,21 @@ import { DEFAULT_REWRITE_ACTIONS, type RewriteInstruction } from "src/ai/types";
 import {
   TextInputModal,
   IWrapInputResult,
-  IExtractColumnResult,
   IExtractBetweenResult,
 } from "src/modals/TextInputModal";
+
+interface CanvasViewLike extends ItemView {
+  canvas?: Record<string, unknown> & {
+    wrapperEl?: HTMLElement;
+    history?: Record<string, unknown> | undefined;
+  };
+}
 
 export class CommandsManager {
   private plugin: editingToolbarPlugin;
 
   private formatAICommandName(...segments: string[]): string {
-    return [t("AI"), ...segments.map((segment) => t(segment as any))].join(" / ");
+    return [t("AI"), ...segments.map((segment) => t(segment))].join(" / ");
   }
 
   private aiRewriteCommandIcons: Record<RewriteInstruction, string> = {
@@ -68,7 +74,7 @@ export class CommandsManager {
   // 执行命令时保持编辑器焦点的辅助函数
   private executeCommandWithoutBlur = async (
     editor: Editor,
-    callback: () => any
+    callback: () => unknown
   ) => {
     if (editor) {
       await callback();
@@ -120,7 +126,7 @@ export class CommandsManager {
       // noop
     }
 
-    const invocationCandidates: Array<{ owner: any; method: string; label: string }> = [
+    const invocationCandidates: Array<{ owner: Record<string, unknown> | undefined; method: string; label: string }> = [
       { owner: activeView.canvas, method: action, label: `canvas.${action}()` },
       {
         owner: activeView.canvas?.history,
@@ -140,15 +146,15 @@ export class CommandsManager {
     return false;
   }
 
-  private getActiveCanvasView(): any | null {
-    const activeLeafView = this.plugin.app.workspace.activeLeaf?.view as any;
+  private getActiveCanvasView(): CanvasViewLike | null {
+    const activeLeafView: CanvasViewLike | null = this.plugin.app.workspace.getActiveViewOfType(ItemView);
     if (activeLeafView?.getViewType?.() === "canvas") {
       return activeLeafView;
     }
 
     const canvasLeaves = this.plugin.app.workspace.getLeavesOfType?.("canvas") ?? [];
     for (const leaf of canvasLeaves) {
-      const view = (leaf as any)?.view;
+      const view = (leaf as unknown as { view?: CanvasViewLike })?.view;
       if (view?.getViewType?.() === "canvas") {
         return view;
       }
@@ -509,7 +515,7 @@ export class CommandsManager {
           }
         }
       }
-    } catch (e) {
+    } catch {
       // 如果无法访问剪贴板 API，回退到基本文本读取
       try {
         const text = await navigator.clipboard.readText();
@@ -522,8 +528,8 @@ export class CommandsManager {
     return items;
   }
 
-  public getActiveEditor(): any {
-    // @ts-ignore
+  public getActiveEditor(): Editor | null {
+    // @ts-expect-error - Obsidian API type mismatch
     const activeEditor = this.plugin.app.workspace?.activeEditor;
     if (activeEditor && activeEditor.editor) {
       return activeEditor.editor;
@@ -531,7 +537,7 @@ export class CommandsManager {
 
     // 最后尝试从活跃叶子获取编辑器
     try {
-      const activeLeafEditor = this.plugin.app.workspace.activeLeaf?.view?.editor;
+      const activeLeafEditor = this.plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
       if (activeLeafEditor) {
         return activeLeafEditor;
       }
@@ -547,7 +553,7 @@ export class CommandsManager {
       name: "Renumber Ordered List",
       editorCallback: (editor: Editor) => {
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             renumberSelection(editor)
           );
       },
@@ -561,7 +567,7 @@ export class CommandsManager {
         this.plugin.settings.cMenuVisibility =
           !this.plugin.settings.cMenuVisibility;
         if (this.plugin.settings.cMenuVisibility) {
-          setTimeout(() => {
+          window.setTimeout(() => {
             dispatchEvent(new Event("editingToolbar-NewCommand"));
           }, 100);
         } else {
@@ -690,7 +696,6 @@ export class CommandsManager {
       id: "ai-inline-completion",
       name: this.formatAICommandName("Complete", "Quick Trigger"),
       icon: "lucide-sparkles",
-      hotkeys: [{ modifiers: ["Mod"], key: "j" }],
       editorCallback: (editor: Editor) => {
         this.plugin.aiManager.triggerInlineCompletion(editor);
       },
@@ -966,7 +971,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             setFormateraser(this.plugin, editor)
           );
       },
@@ -980,10 +985,11 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             setFontcolor(
               this.plugin.settings.cMenuFontColor ?? "#2DC26B",
-              editor
+              editor,
+              this.plugin
             )
           );
       },
@@ -996,7 +1002,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             setBackgroundcolor(
               this.plugin.settings.cMenuBackgroundColor ?? "#FA541C",
               editor
@@ -1011,7 +1017,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () => editor?.indentList());
+          void this.executeCommandWithoutBlur(editor, () => editor?.indentList());
       },
       icon: "indent-glyph",
     });
@@ -1021,7 +1027,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () => editor?.unindentList());
+          void this.executeCommandWithoutBlur(editor, () => editor?.unindentList());
       },
       icon: "unindent-glyph",
     });
@@ -1031,7 +1037,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             editor?.toggleNumberList()
           );
       },
@@ -1043,7 +1049,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             editor?.toggleBulletList()
           );
       },
@@ -1055,7 +1061,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             editor?.toggleMarkdownFormatting("highlight")
           );
       },
@@ -1067,7 +1073,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         if (editor) {
-          this.executeCommandWithoutBlur(editor, () => {
+          void this.executeCommandWithoutBlur(editor, () => {
             // 执行编辑器操作
             editor.toggleMarkdownFormatting("bold");
           });
@@ -1081,7 +1087,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             editor?.toggleMarkdownFormatting("italic")
           );
       },
@@ -1093,7 +1099,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             editor?.toggleMarkdownFormatting("strikethrough")
           );
       },
@@ -1105,7 +1111,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             editor?.toggleMarkdownFormatting("math")
           );
       },
@@ -1118,7 +1124,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, () =>
+          void this.executeCommandWithoutBlur(editor, () =>
             editor?.toggleCheckList(true)
           );
       },
@@ -1145,7 +1151,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, async () => {
+          void this.executeCommandWithoutBlur(editor, async () => {
             try {
               await window.navigator.clipboard.writeText(editor.getSelection());
               this.plugin.app.commands.executeCommandById("editor:focus");
@@ -1162,7 +1168,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, async () => {
+          void this.executeCommandWithoutBlur(editor, async () => {
             try {
               const text = await window.navigator.clipboard.readText();
               if (text) editor.replaceSelection(text);
@@ -1180,7 +1186,7 @@ export class CommandsManager {
       callback: () => {
         const editor = this.getActiveEditor();
         editor &&
-          this.executeCommandWithoutBlur(editor, async () => {
+          void this.executeCommandWithoutBlur(editor, async () => {
             try {
               await window.navigator.clipboard.writeText(editor.getSelection());
               editor.replaceSelection("");
@@ -1214,9 +1220,8 @@ export class CommandsManager {
     this.plugin.addCommand({
       id: "fullscreen-focus",
       name: "Toggle Fullscreen Focus Mode",
-      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "F11" }],
       callback: () => {
-        return fullscreenMode(app);
+        return fullscreenMode(this.plugin.app);
       },
       icon: "fullscreen",
     });
@@ -1224,9 +1229,8 @@ export class CommandsManager {
       id: "workplace-fullscreen-focus",
       name: "Toggle Workplace Fullscreen Focus",
       callback: () => {
-        return workplacefullscreenMode(app);
+        return workplacefullscreenMode(this.plugin.app);
       },
-      hotkeys: [{ modifiers: ["Mod"], key: "F11" }],
       icon: "remix-SplitCellsHorizontal",
     });
 
@@ -1238,7 +1242,7 @@ export class CommandsManager {
         callback: () => {
           const editor = this.getActiveEditor();
           editor &&
-            this.executeCommandWithoutBlur(editor, () =>
+            void this.executeCommandWithoutBlur(editor, () =>
               setHeader("#".repeat(i), editor)
             );
         },
@@ -1255,7 +1259,7 @@ export class CommandsManager {
         callback: () => {
           const editor = this.getActiveEditor();
           editor &&
-            this.executeCommandWithoutBlur(editor, () => {
+            void this.executeCommandWithoutBlur(editor, () => {
               this.applyCommand(this._commandsMap[type], editor);
             });
         },
@@ -1271,10 +1275,10 @@ export class CommandsManager {
         callback: () => {
           const editor = this.getActiveEditor();
           editor &&
-            this.executeCommandWithoutBlur(editor, async () => {
+            void this.executeCommandWithoutBlur(editor, async () => {
               const curserEnd = editor.getCursor("to");
-              let char = this.getCharacterOffset(type["id"]);
-              await this.plugin.app.commands.executeCommandById(
+              const char = this.getCharacterOffset(type["id"]);
+              this.plugin.app.commands.executeCommandById(
                 `${type["id"]}`
               );
               if (char != 0)
@@ -1289,7 +1293,7 @@ export class CommandsManager {
       id: "toggle-format-brush",
       name: "Toggle Format Brush",
       icon: "paintbrush",
-      editorCallback: (editor: Editor) => {
+      editorCallback: () => {
         this.plugin.toggleFormatBrush();
       },
     });
@@ -1380,9 +1384,9 @@ export class CommandsManager {
           // 检查是否使用正则表达式替换
           if (command.useRegex && command.regexPattern) {
             editor &&
-              this.executeCommandWithoutBlur(editor, () => {
+              void this.executeCommandWithoutBlur(editor, () => {
                 // 应用命令
-                this.applyRegexCommand(editor, command);
+                void this.applyRegexCommand(editor, command);
                 this.plugin.setLastExecutedCommand(
                   `editing-toolbar:${commandId}`
                 );
@@ -1399,7 +1403,7 @@ export class CommandsManager {
             this._commandsMap[command.id] = commandConfig;
 
             editor &&
-              this.executeCommandWithoutBlur(editor, () => {
+              void this.executeCommandWithoutBlur(editor, () => {
                 // 应用命令
                 this.applyCommand(commandConfig, editor);
                 this.plugin.setLastExecutedCommand(

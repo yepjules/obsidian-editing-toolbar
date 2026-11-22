@@ -16,9 +16,16 @@ declare module "obsidian" {
 		setSecret(key: string, value: string): void;
 	}
 
-	interface Plugin {
-		registerEditorExtension?(extension: any): void;
-		registerObsidianProtocolHandler?(action: string, callback: (params: Record<string, string>) => any): void;
+	/**
+	 * 本插件使用的扩展编辑器方法（由 Enhanced Editing 等插件注入运行时）。
+	 */
+	export interface Editor {
+		indentList?(): void;
+		unindentList?(): void;
+		toggleNumberList?(): void;
+		toggleBulletList?(): void;
+		toggleCheckList?(state?: boolean): void;
+		toggleMarkdownFormatting?(format: string): void;
 	}
 
 	interface SettingsManager {
@@ -39,7 +46,7 @@ declare module "obsidian" {
 	interface Plugins {
 		manifests: Record<string, PluginManifest>;
 		plugins: Record<string, Plugin_2>;
-		enabledPlugins: any;
+		enabledPlugins: Set<string>;
 		enablePlugin(pluginId: string): Promise<boolean>;
 		disablePlugin(pluginId: string): Promise<void>;
 	}
@@ -59,7 +66,7 @@ declare module "obsidian" {
 	}
 
 	interface Workspace {
-		on(name: 'canvas:node-menu', callback: (menu: Menu, node: unknown) => any, ctx?: any): EventRef;
+		on(name: 'canvas:node-menu', callback: (menu: Menu, node: unknown) => unknown, ctx?: unknown): EventRef;
 	}
 
 	interface MarkdownSubView {
@@ -74,7 +81,7 @@ declare module "obsidian" {
 	}
 
 	interface EditorSuggestManager {
-		suggests: EditorSuggest<any>[];
+		suggests: EditorSuggest<unknown>[];
 	}
 
 	interface Notice {
@@ -248,16 +255,11 @@ declare module "obsidian" {
 		/**
 		 * @public
 		 */
-		constructor();
-
-		/**
-		 * @public
-		 */
 		setNoIcon(): this;
 		/**
 		 * @public
 		 */
-		addItem(cb: (item: MenuItem) => any): this;
+		addItem(cb: (item: MenuItem) => void): this;
 		/**
 		 * @public
 		 */
@@ -278,7 +280,7 @@ declare module "obsidian" {
 		/**
 		 * @public
 		 */
-		onHide(callback: () => any): void;
+		onHide(callback: () => void): void;
 
 	}
 
@@ -350,4 +352,25 @@ declare module "obsidian" {
 		setWarning(warning: boolean): this;
 	}
 
+}
+
+// 全局 HTMLElement 增强：Obsidian 0.16+ 运行时提供的官方样式设置 API。
+// 本地类型声明——仓库锁定的 obsidian@0.15.9 类型包里没有这个定义。
+// 注意 setCssStyles 需要运行时 Obsidian >= 0.16（manifest minAppVersion 已对齐到 1.4.5）。
+declare global {
+	interface HTMLElement {
+		/** 设置元素的内联样式（等价于逐项赋值 el.style.prop = value） */
+		setCssStyles(styles: Partial<Record<string, string | number>>): void;
+		/** 设置 CSS 自定义属性/属性值 */
+		setCssProps(props: Record<string, string | null>): void;
+	}
+}
+declare global {
+	/**
+	 * 全局 createDiv/createEl 等助手在 window 上可用（Obsidian 运行时）。
+	 * 本地类型声明——obsidian@0.15.9 类型包未在 Window 接口上声明它们。
+	 */
+	interface Window {
+		createDiv(o?: { cls?: string; text?: string }, callback?: (el: HTMLDivElement) => void): HTMLDivElement;
+	}
 }

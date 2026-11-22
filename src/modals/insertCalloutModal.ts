@@ -1,5 +1,5 @@
-import { App, Modal, Setting, setIcon, DropdownComponent, Platform } from "obsidian";
-import editingToolbarPlugin, { AdmonitionDefinition } from "src/plugin/main";
+import { Modal, Setting, setIcon, DropdownComponent, Platform } from "obsidian";
+import editingToolbarPlugin from "src/plugin/main";
 import { t } from "src/translations/helper";
 interface BuiltInCalloutType {
     type: string;
@@ -107,7 +107,7 @@ export class InsertCalloutModal extends Modal {
     }
 
     onOpen() {
-        this.display();
+        void this.display();
     }
 
     private async display() {
@@ -170,7 +170,7 @@ export class InsertCalloutModal extends Modal {
         this.updateIconAndColor(this.iconContainerEl, this.type); // Initial icon update
 
         // 标题输入
-        const titleSetting = new Setting(contentEl)
+        new Setting(contentEl)
             .setName(t("Title"))
             .setDesc(t("Optional, leave blank for default title"))
             .addText((text) => {
@@ -196,7 +196,7 @@ export class InsertCalloutModal extends Modal {
             });
 
         // 内容输入
-        const contentSetting = new Setting(contentEl)
+        new Setting(contentEl)
             .setName(t("Content"))
             .addTextArea((text) => {
                 text.setPlaceholder(t("Input content"))
@@ -212,10 +212,10 @@ export class InsertCalloutModal extends Modal {
         // 添加快捷键提示
         const shortcutHint = contentEl.createDiv("shortcut-hint");
         shortcutHint.setText(`${Platform.isMacOS ? "⌘" : "Ctrl"} + Enter ${t("to insert")}`);
-        shortcutHint.style.textAlign = "right";
-        shortcutHint.style.fontSize = "0.8em";
-        shortcutHint.style.opacity = "0.7";
-        shortcutHint.style.marginTop = "5px";
+        shortcutHint.setCssStyles({ textAlign: "right" });
+        shortcutHint.setCssStyles({ fontSize: "0.8em" });
+        shortcutHint.setCssStyles({ opacity: "0.7" });
+        shortcutHint.setCssStyles({ marginTop: "5px" });
 
         // 按钮
         new Setting(contentEl)
@@ -238,7 +238,7 @@ export class InsertCalloutModal extends Modal {
             });
 
         // 自动聚焦到内容文本框
-        setTimeout(() => {
+        window.setTimeout(() => {
             if (this.contentTextArea) {
                 this.contentTextArea.focus();
             }
@@ -252,13 +252,13 @@ export class InsertCalloutModal extends Modal {
             if (typeInfo.isAdmonition) {
                 const adIcon = typeInfo.icon as AdmonitionIconDefinition;
                 if (adIcon.type === 'custom' && adIcon.svg) {
-                    // Admonition custom SVG icon
-                    iconContainer.innerHTML = adIcon.svg; // Directly set SVG content
+                    // Admonition custom SVG icon — parse via DOMParser to avoid unsanitized innerHTML
+                    const svgDoc = new DOMParser().parseFromString(adIcon.svg, 'image/svg+xml');
+                    iconContainer.appendChild(svgDoc.documentElement);
                     const svgEl = iconContainer.querySelector('svg');
                     if (svgEl) {
                         svgEl.style.fill = typeInfo.color; // Set fill color for custom SVG
-                        svgEl.style.width = "var(--icon-size)"; // Use Obsidian's icon size variable
-                        svgEl.style.height = "var(--icon-size)";
+                        svgEl.classList.add("custom-admonition-icon");
                     }
                 } else if ( adIcon.name.startsWith('lucide-')) {
                     // Admonition using a Lucide icon
@@ -355,7 +355,7 @@ export class InsertCalloutModal extends Modal {
         }
 
         // 在下一个事件循环中设置光标位置，确保编辑器已更新
-        setTimeout(() => {
+        window.setTimeout(() => {
             // 在 callout 下方插入一个空行
             editor.replaceRange('\n', newCursorPos);
             // 将光标移动到空行

@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Platform, type Editor } from "obsidian";
+import { MarkdownView, Notice, Platform, TFile, type Editor } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import type EditingToolbarPlugin from "src/plugin/main";
 import { t } from "src/translations/helper";
@@ -6,6 +6,7 @@ import { AIConsentModal } from "src/modals/AIConsentModal";
 import { TextInputModal, type ITextInputSubmitMeta, type ITextInputSuggestion } from "src/modals/TextInputModal";
 import { ToolbarAIService } from "./AIService";
 import { normalizeGeneratedArtifactContent } from "./artifactNormalizer";
+import { safeSetInnerHTML } from "src/util/util";
 import {
   applyCanvasExpansionDraft,
   buildDeterministicCanvasReorganizationPlan,
@@ -64,9 +65,9 @@ export class AIEditorManager {
     this.authService.loadSecrets();
     void this.authService.syncLoginState();
     void this.authService.migrateCustomModelApiKeyFromSettings();
-    const registerHandler = (this.plugin as any).registerObsidianProtocolHandler;
+    const registerHandler = this.plugin.registerObsidianProtocolHandler.bind(this.plugin);
     if (typeof registerHandler === "function") {
-      registerHandler.call(this.plugin, "editing-toolbar-pkmer-auth", async (params: Record<string, string>) => {
+      registerHandler("editing-toolbar-pkmer-auth", async (params: Record<string, string>) => {
         if (params.code && params.state) {
           await this.authService.handleOAuthCallback(params.code, params.state);
         }
@@ -74,22 +75,22 @@ export class AIEditorManager {
     }
 
     this.plugin.registerEvent?.(
-      (this.plugin.app.metadataCache as any).on?.("changed", () => {
+      this.plugin.app.metadataCache.on("changed", () => {
         this.invalidateFrontmatterStatsCache();
       }),
     );
     this.plugin.registerEvent?.(
-      (this.plugin.app.vault as any).on?.("create", () => {
+      this.plugin.app.vault.on("create", () => {
         this.invalidateFrontmatterStatsCache();
       }),
     );
     this.plugin.registerEvent?.(
-      (this.plugin.app.vault as any).on?.("delete", () => {
+      this.plugin.app.vault.on("delete", () => {
         this.invalidateFrontmatterStatsCache();
       }),
     );
     this.plugin.registerEvent?.(
-      (this.plugin.app.vault as any).on?.("rename", () => {
+      this.plugin.app.vault.on("rename", () => {
         this.invalidateFrontmatterStatsCache();
       }),
     );
@@ -114,6 +115,7 @@ export class AIEditorManager {
 
     this.plugin.settings.ai.consentAccepted = true;
     this.plugin.settings.ai.enabled = true;
+    this.plugin.settings.ai.showAIContextMenu = true;
     await this.persistAIAvailabilityChange();
     new Notice(t("AI editing is now enabled. The plugin does not intentionally store your note content, and requests follow your chosen provider policies."), 6000);
   }
@@ -133,6 +135,7 @@ export class AIEditorManager {
 
     this.plugin.settings.ai.onboardingShown = true;
     this.plugin.settings.ai.enabled = true;
+    this.plugin.settings.ai.showAIContextMenu = true;
     await this.persistAIAvailabilityChange();
     new Notice(t("AI editing is now enabled. The plugin does not intentionally store your note content, and requests follow your chosen provider policies."), 6000);
     return true;
@@ -296,6 +299,14 @@ export class AIEditorManager {
 
   async listCustomOllamaModels(): Promise<string[]> {
     return this.aiService.listCustomOllamaModels();
+  }
+
+  async listCustomOpenAIModels(): Promise<string[]> {
+    return this.aiService.listCustomOpenAIModels();
+  }
+
+  async listCustomGeminiModels(): Promise<string[]> {
+    return this.aiService.listCustomGeminiModels();
   }
 
   triggerInlineCompletion(editor?: Editor | null): boolean {
@@ -1341,7 +1352,7 @@ export class AIEditorManager {
       return false;
     }
 
-    const fullText = (resolvedEditor as any).getValue?.() ?? "";
+    const fullText = resolvedEditor.getValue?.() ?? "";
     const frontmatterRange = this.findFrontmatterRange(fullText);
     const noteBody = frontmatterRange
       ? `${fullText.slice(0, frontmatterRange.from)}${fullText.slice(frontmatterRange.to)}`.trim()
@@ -1362,19 +1373,58 @@ export class AIEditorManager {
       contextParts.push(frontmatterStyleSummary.context);
     }
 
+    const frontmatterPrompt = this.buildFrontmatterGenerationPrompt(prompt, noteBody);
+    if (frontmatterPrompt.usesCustomSettings) {
+      contextParts.push("requested_frontmatter_properties:", frontmatterPrompt.properties);
+      contextParts.push(`frontmatter_output_language: ${frontmatterPrompt.language}`);
+    }
+
     view.dispatch({
       effects: startRewriteEffect.of({
         from: frontmatterRange?.from ?? 0,
         to: frontmatterRange?.to ?? 0,
-        originalText: noteBody,
+        originalText: frontmatterPrompt.includeNoteAsTarget ? noteBody : "",
         instruction: "custom",
-        customPrompt: prompt,
+        customPrompt: frontmatterPrompt.prompt,
         context: contextParts.join("\n\n"),
         artifactKind: "frontmatter",
         preferredFrontmatterKeys: frontmatterStyleSummary.preferredAliases,
       }),
     });
     return true;
+  }
+
+  private buildFrontmatterGenerationPrompt(
+    fallbackPrompt: string,
+    noteBody: string,
+  ): { prompt: string; includeNoteAsTarget: boolean; properties: string; language: string; usesCustomSettings: boolean } {
+    const settings = this.plugin.settings.ai.frontmatterPrompt;
+    if (settings?.mode !== "custom") {
+      return {
+        prompt: fallbackPrompt,
+        includeNoteAsTarget: true,
+        properties: "",
+        language: "auto",
+        usesCustomSettings: false,
+      };
+    }
+
+    const properties = settings.properties?.trim() || "Infer the most useful YAML properties from the note.";
+    const language = settings.language?.trim() || "auto";
+    const template = settings.prompt?.trim() || fallbackPrompt;
+    const includesNotePlaceholder = /\{note\}/.test(template);
+    const prompt = template
+      .replace(/\{note\}/g, noteBody)
+      .replace(/\{properties\}/g, properties)
+      .replace(/\{language\}/g, language);
+
+    return {
+      prompt,
+      includeNoteAsTarget: !includesNotePlaceholder,
+      properties,
+      language,
+      usesCustomSettings: true,
+    };
   }
 
   private findFrontmatterRange(text: string): { from: number; to: number } | null {
@@ -1391,7 +1441,7 @@ export class AIEditorManager {
 
   private buildFrontmatterStyleSummary(): { context: string; preferredAliases: Record<string, string> } {
     const activeFile = this.plugin.app.workspace.getActiveFile();
-    const allMarkdownFiles = ((this.plugin.app.vault as any).getMarkdownFiles?.() ?? []) as Array<any>;
+    const allMarkdownFiles: TFile[] = this.plugin.app.vault.getMarkdownFiles?.() ?? [];
     if (!activeFile || allMarkdownFiles.length === 0) {
       return { context: "", preferredAliases: {} };
     }
@@ -1458,13 +1508,13 @@ export class AIEditorManager {
     };
   }
 
-  private collectFrontmatterStats(files: Array<any>, exampleLimit: number): FrontmatterStats {
+  private collectFrontmatterStats(files: TFile[], exampleLimit: number): FrontmatterStats {
     const keyCounts = new Map<string, number>();
     const examples: string[] = [];
     let fileCount = 0;
 
     for (const file of files) {
-      const cache = (this.plugin.app.metadataCache as any)?.getFileCache?.(file);
+      const cache = this.plugin.app.metadataCache.getFileCache(file);
       const frontmatter = cache?.frontmatter;
       if (!frontmatter || typeof frontmatter !== "object") {
         continue;
@@ -1515,7 +1565,7 @@ export class AIEditorManager {
     };
   }
 
-  private getVaultFrontmatterStats(allMarkdownFiles: Array<any>): FrontmatterStats {
+  private getVaultFrontmatterStats(allMarkdownFiles: TFile[]): FrontmatterStats {
     const now = Date.now();
     const cached = this.vaultFrontmatterStatsCache;
     if (
@@ -1682,6 +1732,12 @@ export class AIEditorManager {
 
   private renderInlineCustomPrompt(editor: Editor, view: EditorView, initialSelection?: string): void {
     const doc = view.dom.ownerDocument;
+    // 自愈：面板 DOM 可能被外部移除（全屏模式的 body 观察器会把新增节点搬入编辑器容器，
+    // 容器销毁时面板随之消失；第三方插件也可能清理 body 节点）。若引用已脱离 DOM
+    // 则丢弃并重建，避免“打开面板无反应”。
+    if (this.inlineCustomPromptEl && !this.inlineCustomPromptEl.isConnected) {
+      this.closeInlineCustomPrompt();
+    }
     if (!this.inlineCustomPromptEl) {
       const promptEl = doc.createElement("div");
       promptEl.className = "editing-toolbar-ai-inline-prompt";
@@ -1689,21 +1745,21 @@ export class AIEditorManager {
       header.className = "editing-toolbar-ai-inline-prompt-header";
       const dragHandle = doc.createElement("div");
       dragHandle.className = "editing-toolbar-ai-inline-prompt-drag-handle";
-      dragHandle.style.cursor = "grab";
+      dragHandle.setCssStyles({ cursor: "grab" });
       const titleEl = doc.createElement("div");
       titleEl.className = "editing-toolbar-ai-inline-prompt-title";
       titleEl.textContent = t("AI Custom Rewrite");
       const closeBtn = doc.createElement("button");
       closeBtn.type = "button";
       closeBtn.className = "editing-toolbar-ai-inline-prompt-close";
-      closeBtn.title = t("Close" as any);
-      closeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
+      closeBtn.title = t("Close");
+      safeSetInnerHTML(closeBtn, `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>`);
       header.append(dragHandle, titleEl, closeBtn);
       const settingsBtn = doc.createElement("button");
       settingsBtn.type = "button";
       settingsBtn.className = "editing-toolbar-ai-inline-prompt-settings";
-      settingsBtn.title = t("Manage Templates" as any);
-      settingsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"/></svg>`;
+      settingsBtn.title = t("Manage Templates");
+      safeSetInnerHTML(settingsBtn, `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"/></svg>`);
 
       const inputWrapper = doc.createElement("div");
       inputWrapper.className = "editing-toolbar-ai-inline-prompt-input-wrapper";
@@ -1717,21 +1773,21 @@ export class AIEditorManager {
       const historyBtn = doc.createElement("button");
       historyBtn.type = "button";
       historyBtn.className = "editing-toolbar-ai-inline-prompt-history-btn";
-      historyBtn.title = t("History" as any);
-      historyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`;
+      historyBtn.title = t("History");
+      safeSetInnerHTML(historyBtn, `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`);
 
       const historyDropdown = doc.createElement("div");
       historyDropdown.className = "editing-toolbar-ai-inline-prompt-history-dropdown";
-      historyDropdown.style.display = "none";
+      historyDropdown.setCssStyles({ display: "none" });
 
       const mentionDropdown = doc.createElement("div");
       mentionDropdown.className = "editing-toolbar-ai-inline-prompt-mention-dropdown";
-      mentionDropdown.style.display = "none";
+      mentionDropdown.setCssStyles({ display: "none" });
    const sendBtn = doc.createElement("button");
       sendBtn.type = "button";
       sendBtn.className = "editing-toolbar-ai-inline-prompt-send-btn";
-      sendBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>`;
-      sendBtn.title = t("Send" as any);
+      safeSetInnerHTML(sendBtn, `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>`);
+      sendBtn.title = t("Send");
 
       inputWrapper.append(textarea, historyBtn, historyDropdown, mentionDropdown,sendBtn);
 
@@ -1796,7 +1852,7 @@ export class AIEditorManager {
         templateBtn.className = "editing-toolbar-ai-inline-prompt-template-btn";
         templateBtn.textContent = template.name;
         templateBtn.title = template.prompt;
-        templateBtn.addEventListener("click", async () => {
+        templateBtn.addEventListener("click", async () => {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
           textarea.value = replaceTemplateVariables(template.prompt);
           renderContextItems();
           resizeTextarea();
@@ -1810,7 +1866,7 @@ export class AIEditorManager {
 
       const contextContainer = doc.createElement("div");
       contextContainer.className = "editing-toolbar-ai-inline-prompt-context";
-      contextContainer.style.display = "none";
+      contextContainer.setCssStyles({ display: "none" });
 
       const contextList: Array<{type: string, content: string, label: string}> = [];
 
@@ -1825,10 +1881,10 @@ export class AIEditorManager {
       const renderContextItems = () => {
         contextContainer.empty();
         if (contextList.length === 0) {
-          contextContainer.style.display = "none";
+          contextContainer.setCssStyles({ display: "none" });
           return;
         }
-        contextContainer.style.display = "block";
+        contextContainer.setCssStyles({ display: "block" });
         contextList.forEach((ctx, index) => {
           const item = doc.createElement("div");
           item.className = "editing-toolbar-ai-inline-prompt-context-item";
@@ -1848,7 +1904,7 @@ export class AIEditorManager {
           const removeBtn = doc.createElement("button");
           removeBtn.type = "button";
           removeBtn.className = "editing-toolbar-ai-inline-prompt-context-remove";
-          removeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
+          safeSetInnerHTML(removeBtn, `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>`);
           removeBtn.addEventListener("click", () => {
             // 从上下文列表移除
             contextList.splice(index, 1);
@@ -1879,8 +1935,8 @@ export class AIEditorManager {
       const hint = doc.createElement("div");
       hint.className = "editing-toolbar-ai-inline-prompt-hint";
       const promptHint = Platform.isMobileApp
-        ? t("Enter inserts a newline. Tap Send to submit." as any)
-        : t("Press Enter to send, Shift+Enter for newline, Esc to close." as any);
+        ? t("Enter inserts a newline. Tap Send to submit.")
+        : t("Press Enter to send, Shift+Enter for newline, Esc to close.");
       hint.textContent = promptHint  ;
 
    
@@ -1904,8 +1960,8 @@ export class AIEditorManager {
         offsetX = clientX - rect.left;
         offsetY = clientY - rect.top;
 
-        promptEl.style.cursor = 'grabbing';
-        dragHandle.style.cursor = 'grabbing';
+        promptEl.setCssStyles({ cursor: 'grabbing' });
+        dragHandle.setCssStyles({ cursor: 'grabbing' });
 
         if ('touches' in e) {
           e.preventDefault();
@@ -1928,31 +1984,31 @@ export class AIEditorManager {
 
       const onDragEnd = () => {
         isDragging = false;
-        promptEl.style.cursor = '';
-        dragHandle.style.cursor = 'grab';
+        promptEl.setCssStyles({ cursor: '' });
+        dragHandle.setCssStyles({ cursor: 'grab' });
       };
 
-      dragHandle.addEventListener('mousedown', onDragStart as EventListener);
-      titleEl.addEventListener('mousedown', onDragStart as EventListener);
-      dragHandle.addEventListener('touchstart', onDragStart as EventListener, { passive: false });
-      titleEl.addEventListener('touchstart', onDragStart as EventListener, { passive: false });
+      dragHandle.addEventListener('mousedown', onDragStart);
+      titleEl.addEventListener('mousedown', onDragStart);
+      dragHandle.addEventListener('touchstart', onDragStart, { passive: false });
+      titleEl.addEventListener('touchstart', onDragStart, { passive: false });
 
-      doc.addEventListener('mousemove', onDrag as EventListener);
-      doc.addEventListener('touchmove', onDrag as EventListener, { passive: false });
+      doc.addEventListener('mousemove', onDrag);
+      doc.addEventListener('touchmove', onDrag, { passive: false });
 
       doc.addEventListener('mouseup', onDragEnd);
       doc.addEventListener('touchend', onDragEnd);
 
       const resizeTextarea = () => {
-        textarea.style.height = "auto";
+        textarea.setCssStyles({ height: "auto" });
         const newHeight = Math.min(Math.max(textarea.scrollHeight, 56), 240);
         textarea.style.height = `${newHeight}px`;
 
         // 如果内容超过最大高度，显示滚动条
         if (textarea.scrollHeight > 240) {
-          textarea.style.overflowY = "auto";
+          textarea.setCssStyles({ overflowY: "auto" });
         } else {
-          textarea.style.overflowY = "hidden";
+          textarea.setCssStyles({ overflowY: "hidden" });
         }
       };
 
@@ -1962,7 +2018,7 @@ export class AIEditorManager {
       };
 
       const submitPrompt = async () => {
-        let prompt = textarea.value.trim();
+        const prompt = textarea.value.trim();
         if (!prompt) {
           return;
         }
@@ -2028,17 +2084,17 @@ export class AIEditorManager {
         if (history.length === 0) {
           const emptyItem = doc.createElement("div");
           emptyItem.className = "editing-toolbar-ai-inline-prompt-history-empty";
-          emptyItem.textContent = t("No history" as any);
+          emptyItem.textContent = t("No history");
           historyDropdown.appendChild(emptyItem);
         } else {
-          history.forEach((item, index) => {
+          history.forEach((item) => {
             const historyItem = doc.createElement("div");
             historyItem.className = "editing-toolbar-ai-inline-prompt-history-item";
             historyItem.textContent = item.length > 50 ? item.substring(0, 50) + "..." : item;
             historyItem.title = item;
-            historyItem.addEventListener("click", async () => {
+            historyItem.addEventListener("click", async () => {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
               textarea.value = item;
-              historyDropdown.style.display = "none";
+              historyDropdown.setCssStyles({ display: "none" });
               resizeTextarea();
               updateSendButtonState();
               textarea.focus();
@@ -2061,7 +2117,7 @@ export class AIEditorManager {
 
       doc.addEventListener("click", (e) => {
         if (!historyDropdown.contains(e.target as Node) && e.target !== historyBtn) {
-          historyDropdown.style.display = "none";
+          historyDropdown.setCssStyles({ display: "none" });
         }
       });
 
@@ -2072,25 +2128,26 @@ export class AIEditorManager {
 
       closeBtn.addEventListener("click", closePrompt);
       settingsBtn.addEventListener("click", () => {
-        this.plugin.app.setting.open();
-        this.plugin.app.setting.openTabById("editing-toolbar");
-        setTimeout(() => {
-          const tabsContainer = this.plugin.app.setting.activeTab?.containerEl?.querySelector(".editing-toolbar-tabs");
-          if (tabsContainer) {
-            const aiTab = Array.from(tabsContainer.children).find((el: HTMLElement) =>
-              el.textContent?.includes("AI") || el.getAttribute("data-tab") === "ai"
-            ) as HTMLElement;
-            aiTab?.click();
-          }
-        }, 100);
+        this.plugin.settingTab.revealAISettings();
         closePrompt();
       });
       sendBtn.addEventListener("click", () => {
         void submitPrompt();
       });
+      // On Android the fixed panel can be repositioned between touchstart and
+      // the synthetic click (soft-keyboard panning fires scroll/resize), which
+      // cancels the tap before the click ever dispatches - the user only sees
+      // the hover state and nothing is sent (issue #344). Touch events keep
+      // their original target, so handling touchend directly stays reliable
+      // even when the panel moves mid-tap; preventDefault avoids a duplicate
+      // submit through the synthetic click.
+      sendBtn.addEventListener("touchend", (event: TouchEvent) => {
+        event.preventDefault();
+        void submitPrompt();
+      });
       let linkStartPos = -1;
       let selectedSuggestionIndex = 0;
-      let suggestionFiles: any[] = [];
+      let suggestionFiles: TFile[] = [];
 
       const syncLinkedNotesContext = async () => {
         const text = textarea.value;
@@ -2140,12 +2197,12 @@ export class AIEditorManager {
         renderContextItems();
       };
 
-      const selectSuggestion = async (file: any) => {
+      const selectSuggestion = async (file: TFile) => {
         const cursorPos = textarea.selectionStart;
         const beforeLink = textarea.value.substring(0, linkStartPos);
         const afterCursor = textarea.value.substring(cursorPos);
         textarea.value = beforeLink + `[[${file.basename}]] ` + afterCursor;
-        mentionDropdown.style.display = "none";
+        mentionDropdown.setCssStyles({ display: "none" });
 
         textarea.focus();
         const newCursorPos = linkStartPos + file.basename.length + 5;
@@ -2188,18 +2245,22 @@ export class AIEditorManager {
               const item = doc.createElement("div");
               item.className = "editing-toolbar-ai-inline-prompt-mention-item";
               if (index === 0) item.classList.add("selected");
-              item.innerHTML = `<span class="editing-toolbar-ai-inline-prompt-mention-icon">📄</span>${file.basename} <span style="color: var(--text-faint); font-size: 10px;">${file.path}</span>`;
+              item.createSpan({ cls: "editing-toolbar-ai-inline-prompt-mention-icon", text: "📄" });
+              item.appendText(file.basename);
+              const pathSpan = item.createSpan({ text: file.path });
+              pathSpan.setCssStyles({ color: "var(--text-faint)" });
+              pathSpan.setCssStyles({ fontSize: "10px" });
               item.addEventListener("click", () => {
                 void selectSuggestion(file);
               });
               mentionDropdown.appendChild(item);
             });
-            mentionDropdown.style.display = "block";
+            mentionDropdown.setCssStyles({ display: "block" });
           } else {
-            mentionDropdown.style.display = "none";
+            mentionDropdown.setCssStyles({ display: "none" });
           }
         } else {
-          mentionDropdown.style.display = "none";
+          mentionDropdown.setCssStyles({ display: "none" });
           linkStartPos = -1;
           suggestionFiles = [];
         }
@@ -2247,7 +2308,7 @@ export class AIEditorManager {
         return { value: normalizedValue, cursorPos: normalizedCursorPos };
       };
 
-      textarea.addEventListener("input", (e) => {
+      textarea.addEventListener("input", () => {
         const normalized = normalizeLinkTriggerInput(textarea.value, textarea.selectionStart);
 
         if (normalized.value !== textarea.value || normalized.cursorPos !== textarea.selectionStart) {
@@ -2307,7 +2368,7 @@ export class AIEditorManager {
         if (event.key === "Escape") {
           event.preventDefault();
           if (isSuggestionVisible) {
-            mentionDropdown.style.display = "none";
+            mentionDropdown.setCssStyles({ display: "none" });
           } else {
             closePrompt();
           }
@@ -2333,12 +2394,12 @@ export class AIEditorManager {
       this.inlineCustomPromptCleanup = [
         () => win.removeEventListener("resize", reposition),
         () => doc.removeEventListener("scroll", reposition, true),
-        () => dragHandle.removeEventListener('mousedown', onDragStart as EventListener),
-        () => titleEl.removeEventListener('mousedown', onDragStart as EventListener),
-        () => dragHandle.removeEventListener('touchstart', onDragStart as EventListener),
-        () => titleEl.removeEventListener('touchstart', onDragStart as EventListener),
-        () => doc.removeEventListener('mousemove', onDrag as EventListener),
-        () => doc.removeEventListener('touchmove', onDrag as EventListener),
+        () => dragHandle.removeEventListener('mousedown', onDragStart),
+        () => titleEl.removeEventListener('mousedown', onDragStart),
+        () => dragHandle.removeEventListener('touchstart', onDragStart),
+        () => titleEl.removeEventListener('touchstart', onDragStart),
+        () => doc.removeEventListener('mousemove', onDrag),
+        () => doc.removeEventListener('touchmove', onDrag),
         () => doc.removeEventListener('mouseup', onDragEnd),
         () => doc.removeEventListener('touchend', onDragEnd),
       ];
@@ -2388,7 +2449,7 @@ export class AIEditorManager {
       return editor;
     }
     try {
-      return this.plugin.commandsManager?.getActiveEditor() ?? ((this.plugin.app.workspace.getActiveViewOfType(MarkdownView) as MarkdownView | null)?.editor ?? null);
+      return this.plugin.commandsManager?.getActiveEditor() ?? ((this.plugin.app.workspace.getActiveViewOfType(MarkdownView))?.editor ?? null);
     } catch {
       return null;
     }
@@ -2396,9 +2457,9 @@ export class AIEditorManager {
 
   private getEditorView(editor?: Editor | null): EditorView | null {
     const resolvedEditor = this.resolveEditor(editor);
-    const view = (resolvedEditor as any)?.cm;
+    const view = (resolvedEditor as Editor & { cm?: EditorView })?.cm;
     if (view && view.state && typeof view.dispatch === "function") {
-      return view as EditorView;
+      return view;
     }
     return null;
   }
@@ -2423,6 +2484,6 @@ export class AIEditorManager {
     }
 
     this.plugin.settings.ai.customPromptHistory = history;
-    this.plugin.saveSettings();
+    void this.plugin.saveSettings();
   }
 }

@@ -17,7 +17,8 @@ export class PKMerAuthService {
   private plugin: EditingToolbarPlugin;
   private cachedVerified: boolean | null = null;
   private refreshPromise: Promise<boolean> | null = null;
-  private callbackServer: any = null;
+  private callbackServer: import("http").Server | null = null;
+  private callbackCodeResolve: ((code: string | null) => void) | null = null;
   private pendingCodeVerifier: string | null = null;
   private pendingState: string | null = null;
   private pendingAuthorizationUrl: string | null = null;
@@ -31,7 +32,7 @@ export class PKMerAuthService {
   }
 
   private get secrets() {
-    return (this.plugin.app as any).secretStorage;
+    return this.plugin.app.secretStorage;
   }
 
   private get supportsSecretStorage(): boolean {
@@ -141,7 +142,11 @@ export class PKMerAuthService {
       return true;
     }
     if (this.memRefreshToken) {
-      const refreshed = await this.refreshTokens();
+      // 刷新走网络：加超时保护，避免 PKMer 服务慢/网络挂起时阻塞 AI 菜单与操作
+      const refreshed = await Promise.race([
+        this.refreshTokens(),
+        new Promise<boolean>((resolve) => window.setTimeout(() => resolve(true), 3000)),
+      ]);
       this.cachedVerified = refreshed;
       return refreshed;
     }
@@ -167,9 +172,13 @@ export class PKMerAuthService {
     if (this.hasPendingOAuthRequest()) {
       if (this.pendingAuthorizationUrl) {
         window.open(this.pendingAuthorizationUrl);
+        new Notice(t("PKMer login is already in progress. Please continue in the opened browser window."));
+        return;
       }
-      new Notice(t("PKMer login is already in progress. Please continue in the opened browser window."));
-      return;
+      // Pending state exists but no URL — a previous login attempt failed
+      // before opening the browser (e.g. port conflict). Clear the stale
+      // state and fall through to start a fresh login.
+      this.clearPendingOAuthRequest();
     }
 
     this.closeCallbackServer();
@@ -180,12 +189,48 @@ export class PKMerAuthService {
     this.pendingState = state;
     const codeChallenge = await this.computeCodeChallenge(codeVerifier);
 
+    if (Platform.isMobile) {
+      const authorizationParams = new URLSearchParams({
+        response_type: "code",
+        client_id: PKMER_OAUTH_CONFIG.clientId,
+        redirect_uri: PKMER_OAUTH_CONFIG.mobileRedirectUri,
+        scope: PKMER_OAUTH_CONFIG.scopes,
+        state,
+        code_challenge: codeChallenge,
+        code_challenge_method: "S256",
+      });
+      const authorizationUrl = `${PKMER_OAUTH_CONFIG.authorizationUrl}?${authorizationParams.toString()}`;
+      const loginEntryUrl = getPKMerAuthorizationEntryUrl(authorizationUrl);
+      this.pendingAuthorizationUrl = loginEntryUrl;
+      window.open(loginEntryUrl);
+      window.setTimeout(() => {
+        if (this.isPendingStateMatch(state)) {
+          this.clearPendingOAuthRequest();
+        }
+      }, 5 * 60 * 1000);
+      return;
+    }
+
+    // Desktop: start the callback server on the fixed PKMer port (10891)
+    // before opening the browser, so we can detect port conflicts early
+    // and show a targeted notice instead of a silent failure.
+    const codePromise = new Promise<string | null>((resolve) => {
+      this.callbackCodeResolve = resolve;
+    });
+
+    const serverStatus = await this.startCallbackServerAndWait();
+    if (serverStatus !== "ok") {
+      this.callbackCodeResolve = null;
+      this.clearPendingOAuthRequest();
+      this.showCallbackServerErrorNotice(serverStatus);
+      return;
+    }
+
+    const desktopRedirectUri = PKMER_OAUTH_CONFIG.desktopRedirectUri;
     const authorizationParams = new URLSearchParams({
       response_type: "code",
       client_id: PKMER_OAUTH_CONFIG.clientId,
-      redirect_uri: Platform.isMobile
-        ? PKMER_OAUTH_CONFIG.mobileRedirectUri
-        : PKMER_OAUTH_CONFIG.desktopRedirectUri,
+      redirect_uri: desktopRedirectUri,
       scope: PKMER_OAUTH_CONFIG.scopes,
       state,
       code_challenge: codeChallenge,
@@ -195,17 +240,6 @@ export class PKMerAuthService {
     const loginEntryUrl = getPKMerAuthorizationEntryUrl(authorizationUrl);
     this.pendingAuthorizationUrl = loginEntryUrl;
 
-    if (Platform.isMobile) {
-      window.open(loginEntryUrl);
-      setTimeout(() => {
-        if (this.isPendingStateMatch(state)) {
-          this.clearPendingOAuthRequest();
-        }
-      }, 5 * 60 * 1000);
-      return;
-    }
-
-    const codePromise = this.startCallbackServer();
     window.open(loginEntryUrl);
 
     try {
@@ -215,7 +249,7 @@ export class PKMerAuthService {
         return;
       }
 
-      const success = await this.exchangeCodeForTokens(code, PKMER_OAUTH_CONFIG.desktopRedirectUri);
+      const success = await this.exchangeCodeForTokens(code, desktopRedirectUri);
       if (success) {
         await this.fetchUserInfo();
         new Notice(t("Successfully logged in to PKMer!"));
@@ -226,8 +260,30 @@ export class PKMerAuthService {
       console.error("PKMer OAuth login error:", error);
       new Notice(t("Login failed. Please try again."));
     } finally {
+      this.callbackCodeResolve = null;
       this.clearPendingOAuthRequest({ closeServer: true });
     }
+  }
+
+  /**
+   * Show a user-friendly notice explaining why the login callback server
+   * could not start, with actionable steps tailored to the error type.
+   */
+  private showCallbackServerErrorNotice(status: "EACCES" | "EADDRINUSE" | "EUNKNOWN" | "NO_HTTP"): void {
+    const port = PKMER_OAUTH_CONFIG.callbackPort;
+    let message: string;
+
+    if (status === "EACCES") {
+      message = t("Login failed: local port {{port}} is occupied or reserved by the system. Please release port {{port}} (e.g. restart your computer or close the program using it), then try again.").replace(/\{\{port\}\}/g, String(port));
+    } else if (status === "EADDRINUSE") {
+      message = t("Login failed: local port {{port}} is already in use. Please close other Obsidian windows or the program using port {{port}}, then try again.").replace(/\{\{port\}\}/g, String(port));
+    } else if (status === "NO_HTTP") {
+      message = t("Login failed: the local HTTP server module is not available. This usually happens on Obsidian mobile. Please use the mobile login flow instead.");
+    } else {
+      message = t("Login failed: could not start the local callback server on port {{port}}. Please check your network settings and try again.").replace(/\{\{port\}\}/g, String(port));
+    }
+
+    new Notice(message, 15000);
   }
 
   async handleOAuthCallback(code: string, state: string): Promise<boolean> {
@@ -274,6 +330,26 @@ export class PKMerAuthService {
     return (this.plugin.settings.ai.pkmer.userInfo?.ai_quota as { quota: number; remainingQuota: number } | undefined) ?? null;
   }
 
+  /**
+   * Called when an AI request returns 401. Attempts to refresh the
+   * access token and re-fetch the AI token. Returns true if a new
+   * valid aiToken is available, false if the user must re-login.
+   */
+  async refreshFor401(): Promise<boolean> {
+    if (!this.memRefreshToken) {
+      this.clearSecrets();
+      return false;
+    }
+
+    const refreshed = await this.refreshTokens();
+    if (!refreshed) {
+      return false;
+    }
+
+    await this.fetchUserInfo();
+    return !!this.memAiToken;
+  }
+
   onunload(): void {
     this.closeCallbackServer();
   }
@@ -283,14 +359,32 @@ export class PKMerAuthService {
     return base64url(digest);
   }
 
-  private startCallbackServer(): Promise<string | null> {
+  /**
+   * Start the callback server on the fixed PKMer port (10891) and wait
+   * until it is actually listening (or fails) before resolving.
+   *
+   * Returns "ok" on success, or an error code string describing the
+   * failure so the caller can show a targeted, user-friendly notice.
+   *
+   * Common failures on Windows:
+   * - "EACCES": port 10891 is inside a Hyper-V/WSL reserved port range.
+   * - "EADDRINUSE": another process (or another Obsidian window) is
+   *   already listening on port 10891.
+   */
+  private startCallbackServerAndWait(): Promise<"ok" | "EACCES" | "EADDRINUSE" | "EUNKNOWN" | "NO_HTTP"> {
     return new Promise((resolve) => {
       try {
-        const http = (window as any).require("node:http");
-        const server = http.createServer((req: any, res: any) => {
-          const url = new URL(req.url, `http://localhost:${PKMER_OAUTH_CONFIG.callbackPort}`);
+        const http = window.require("node:http") as typeof import("http");
+        if (!http) {
+          resolve("NO_HTTP");
+          return;
+        }
 
-          if (url.pathname !== "/editing-toolbar/callback") {
+        const port = PKMER_OAUTH_CONFIG.callbackPort;
+        const server = http.createServer((req, res) => {
+          const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+
+          if (url.pathname !== PKMER_OAUTH_CONFIG.callbackPath) {
             res.writeHead(404);
             res.end();
             return;
@@ -302,11 +396,11 @@ export class PKMerAuthService {
           if (!this.isPendingStateMatch(state)) {
             res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
             res.end("<html><body><h2>State mismatch.</h2><p>Another Obsidian window may have intercepted this callback.</p><p>Please close other Obsidian and try again.</p></body></html>");
-            resolve(null);
+            this.callbackCodeResolve?.(null);
           } else if (code) {
             res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
             res.end("<html><body><h2>Login successful!</h2><p>You can close this window and return to Obsidian.</p><script>window.close()</script></body></html>");
-            resolve(code);
+            this.callbackCodeResolve?.(code);
           } else {
             const error = url.searchParams.get("error") || "unknown error";
             const escapedError = error.replace(/[&<>"']/g, (ch: string) => ({
@@ -318,30 +412,37 @@ export class PKMerAuthService {
             }[ch] as string));
             res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
             res.end(`<html><body><h2>Login failed: ${escapedError}</h2></body></html>`);
-            resolve(null);
+            this.callbackCodeResolve?.(null);
           }
 
-          setTimeout(() => this.closeCallbackServer(), 500);
+          window.setTimeout(() => this.closeCallbackServer(), 500);
         });
 
-        server.on("error", (error: any) => {
-          console.error("Callback server error:", error);
-          new Notice(`Failed to start login server: ${error.message}`);
-          resolve(null);
+        server.once("error", (error: Error & { code?: string }) => {
+          const code = error?.code ?? "";
+          console.error(`Callback server error on port ${port}:`, error);
+          this.callbackServer = null;
+          if (code === "EACCES") { resolve("EACCES"); return; }
+          if (code === "EADDRINUSE") { resolve("EADDRINUSE"); return; }
+          resolve("EUNKNOWN");
         });
 
-        server.listen(PKMER_OAUTH_CONFIG.callbackPort, "127.0.0.1");
-        this.callbackServer = server;
+        server.once("listening", () => {
+          this.callbackServer = server;
+          resolve("ok");
+        });
 
-        setTimeout(() => {
+        server.listen(port, "127.0.0.1");
+
+        window.setTimeout(() => {
           if (this.callbackServer === server) {
             this.closeCallbackServer();
-            resolve(null);
+            this.callbackCodeResolve?.(null);
           }
         }, 5 * 60 * 1000);
       } catch (error) {
         console.error("Failed to start callback server:", error);
-        resolve(null);
+        resolve("EUNKNOWN");
       }
     });
   }
@@ -412,7 +513,7 @@ export class PKMerAuthService {
   }
 
   private async refreshTokens(): Promise<boolean> {
-    if (this.refreshPromise) return this.refreshPromise;
+    if (this.refreshPromise) return this.refreshPromise;  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
 
     this.refreshPromise = (async () => {
       try {

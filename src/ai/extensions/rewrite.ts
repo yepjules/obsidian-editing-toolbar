@@ -86,7 +86,7 @@ function dispatchRewrite(view: EditorView, instruction: RewriteInstruction, cust
   });
 }
 
-function formatShortcutLabel(parts: Array<"Mod" | "Shift" | "Alt" | "Ctrl" | string>): string {
+function formatShortcutLabel(parts: Array<string>): string {
   const displayParts = parts.map((part) => {
     if (part === "Mod") {
       return Platform.isMacOS ? "⌘" : "Ctrl";
@@ -132,6 +132,31 @@ function isFrontmatterOperation(operation: RewriteOperation | null): boolean {
   return operation?.params.artifactKind === "frontmatter";
 }
 
+function normalizeFrontmatterOperationResult(operation: RewriteOperation): string {
+  return normalizeGeneratedFrontmatter(
+    operation.result,
+    operation.params.preferredFrontmatterKeys,
+  );
+}
+
+function getRewritePreviewText(operation: RewriteOperation): string {
+  if (!isFrontmatterOperation(operation) || !operation.result.trim()) {
+    return operation.result || "";
+  }
+
+  try {
+    return normalizeFrontmatterOperationResult(operation);
+  } catch {
+    return operation.result || "";
+  }
+}
+
+function getRewriteCopyText(operation: RewriteOperation): string {
+  return isFrontmatterOperation(operation)
+    ? normalizeFrontmatterOperationResult(operation)
+    : operation.result;
+}
+
 function dismissRewritePanel(view: EditorView, rewriteField: StateField<RewriteFieldValue>): boolean {
   if (!getRewriteOperation(view, rewriteField)) {
     return false;
@@ -147,7 +172,11 @@ async function copyRewriteResultToClipboard(
   rewriteField: StateField<RewriteFieldValue>,
 ): Promise<boolean> {
   const operation = getRewriteOperation(view, rewriteField, true);
-  const result = operation?.result;
+  if (!operation) {
+    return false;
+  }
+
+  const result = getRewriteCopyText(operation);
   if (!result) {
     return false;
   }
@@ -222,10 +251,7 @@ function applyFrontmatterResult(
   }
 
   try {
-    const normalized = normalizeGeneratedFrontmatter(
-      operation.result,
-      operation.params.preferredFrontmatterKeys,
-    );
+    const normalized = normalizeFrontmatterOperationResult(operation);
     view.dispatch({ effects: cancelRewriteEffect.of(undefined) });
     view.dispatch({
       changes: { from: operation.params.from, to: operation.params.to, insert: normalized },
@@ -297,13 +323,13 @@ function retryRewrite(view: EditorView, rewriteField: StateField<RewriteFieldVal
 function setActionButtonLabel(btn: HTMLButtonElement, label: string, shortcut?: string): void {
   btn.replaceChildren();
 
-  const labelEl = document.createElement("span");
+  const labelEl = createSpan();
   labelEl.className = "cm-ai-btn-label";
   labelEl.textContent = label;
   btn.appendChild(labelEl);
 
   if (shortcut) {
-    const shortcutEl = document.createElement("span");
+    const shortcutEl = createSpan();
     shortcutEl.className = "cm-ai-btn-shortcut";
     shortcutEl.textContent = shortcut;
     btn.appendChild(shortcutEl);
@@ -320,7 +346,7 @@ function createResultPanelTooltipView(
     createGeneratedArtifact?: RewriteConfig["createGeneratedArtifact"];
   },
 ): TooltipView {
-  const dom = document.createElement("div");
+  const dom = createDiv();
   dom.className = "cm-ai-result-panel";
   dom.dataset.phase = "streaming";
   let copyResetTimer: number | null = null;
@@ -331,14 +357,14 @@ function createResultPanelTooltipView(
     }
   });
 
-  const headerRow = document.createElement("div");
+  const headerRow = createDiv();
   headerRow.className = "cm-ai-result-header-row";
 
-  const header = document.createElement("div");
+  const header = createDiv();
   header.className = "cm-ai-result-header";
   header.textContent = t("AI is writing...");
 
-  const closeBtn = document.createElement("button");
+  const closeBtn = createEl("button");
   closeBtn.type = "button";
   closeBtn.className = "cm-ai-result-close";
   closeBtn.textContent = "×";
@@ -352,13 +378,13 @@ function createResultPanelTooltipView(
   headerRow.append(header, closeBtn);
   dom.appendChild(headerRow);
 
-  const content = document.createElement("div");
+  const content = createDiv();
   content.className = "cm-ai-result-content";
   dom.appendChild(content);
 
-  const actionsBar = document.createElement("div");
+  const actionsBar = createDiv();
   actionsBar.className = "cm-ai-result-actions";
-  actionsBar.style.display = "none";
+  actionsBar.setCssStyles({ display: "none" });
 
   function resetCopyButtonLabel(): void {
     if (copyResetTimer !== null) {
@@ -420,19 +446,19 @@ function createResultPanelTooltipView(
     update(update: ViewUpdate) {
       const state = update.state.field(rewriteField);
       if (!state.operation) {
-        dom.style.display = "none";
+        dom.setCssStyles({ display: "none" });
         dom.dataset.phase = "idle";
         return;
       }
 
-      dom.style.display = "";
+      dom.setCssStyles({ display: "" });
       dom.dataset.phase = state.operation.phase;
-      content.textContent = state.operation.result || "";
+      content.textContent = getRewritePreviewText(state.operation);
       if (isFileArtifactOperation(state.operation)) {
         header.textContent = t("AI file suggestion");
         setActionButtonLabel(replaceBtn, t("Create"), REWRITE_PANEL_SHORTCUTS.replace.display);
         setActionButtonLabel(insertBtn, t("Create & Embed"), REWRITE_PANEL_SHORTCUTS.insertBelow.display);
-        insertBtn.style.display = "";
+        insertBtn.setCssStyles({ display: "" });
       } else if (isFrontmatterOperation(state.operation)) {
         header.textContent = t("AI frontmatter suggestion");
         setActionButtonLabel(
@@ -442,7 +468,7 @@ function createResultPanelTooltipView(
             : t("Replace frontmatter"),
           REWRITE_PANEL_SHORTCUTS.replace.display,
         );
-        insertBtn.style.display = "none";
+        insertBtn.setCssStyles({ display: "none" });
       } else {
         setActionButtonLabel(
           replaceBtn,
@@ -452,7 +478,7 @@ function createResultPanelTooltipView(
           REWRITE_PANEL_SHORTCUTS.replace.display,
         );
         setActionButtonLabel(insertBtn, t("Insert below"), REWRITE_PANEL_SHORTCUTS.insertBelow.display);
-        insertBtn.style.display = "";
+        insertBtn.setCssStyles({ display: "" });
       }
 
       if (state.operation.phase === "done") {
@@ -461,12 +487,12 @@ function createResultPanelTooltipView(
             header.textContent = t("AI suggestion");
           }
         }
-        copyBtn.style.display = "";
-        actionsBar.style.display = "flex";
+        copyBtn.setCssStyles({ display: "" });
+        actionsBar.setCssStyles({ display: "flex" });
       } else {
         resetCopyButtonLabel();
         header.textContent = t("AI is writing...");
-        actionsBar.style.display = "none";
+        actionsBar.setCssStyles({ display: "none" });
       }
     },
     destroy() {
@@ -483,7 +509,7 @@ function createActionButton(
   onClick: () => void,
   shortcut?: string,
 ): HTMLButtonElement {
-  const btn = document.createElement("button");
+  const btn = createEl("button");
   btn.className = `cm-ai-btn ${className}`;
   setActionButtonLabel(btn, label, shortcut);
   btn.addEventListener("click", onClick);

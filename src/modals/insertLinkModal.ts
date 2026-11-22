@@ -1,4 +1,4 @@
-import { App, Modal,Editor,EditorPosition, Setting, TextComponent, ToggleComponent, Platform, setIcon, Notice, requestUrl, MarkdownView } from "obsidian";
+import { Modal,Editor,EditorPosition, Setting, TextComponent, ToggleComponent, Platform, setIcon, Notice, requestUrl, MarkdownView } from "obsidian";
 import editingToolbarPlugin from "src/plugin/main";
 import { t } from "src/translations/helper";
 
@@ -25,7 +25,7 @@ class UrlTitleFetcher {
         try {
             new URL(url);
             return true;
-        } catch (err) {
+        } catch {
             return false;
         }
     }
@@ -132,7 +132,7 @@ export class InsertLinkModal extends Modal {
                 this.handleCursorPosition(editor);
             }
         } else {
-            this.parseClipboard();
+            void this.parseClipboard();
         }
     
         this.updateHeader();
@@ -164,12 +164,12 @@ export class InsertLinkModal extends Modal {
             this.selectedText = formattedText;
             this.parseSelectedText(formattedText);
         } else {
-            this.parseClipboard();
+            void this.parseClipboard();
         }
     }
     
     // 尝试扩展选择范围，查找完整链接或图片
-    private tryExpandSelection(editor: Editor, selectedText: string): LinkTarget | null {
+    private tryExpandSelection(editor: Editor, _selectedText: string): LinkTarget | null {
         const cursorFrom = editor.getCursor('from');
         const line = editor.getLine(cursorFrom.line);
         const selectionStart = cursorFrom.ch;
@@ -436,7 +436,7 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
 
             new URL(url);
             return true;
-        } catch (e) {
+        } catch {
             // 如果 URL 构造失败，检查是否符合基本格式
             // 允许几乎任何不包含空格的字符串作为 URL
             return false;
@@ -462,12 +462,12 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
             // 设置为嵌入模式
             this.isEmbed = true;
             // 如果 embedToggle 已经创建，更新其状态
-            if (this.embedToggle) {
+            if (this.embedToggle) {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
                 this.embedToggle.setValue(true);
                 // 显示图片尺寸设置
                 const imageSizeEl = this.contentEl.querySelector('.image-size-setting');
                 if (imageSizeEl) {
-                    (imageSizeEl as HTMLElement).style.display = 'block';
+                    (imageSizeEl as HTMLElement).setCssStyles({ display: 'block' });
                 }
             }
 
@@ -587,7 +587,7 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
                     }
                 }
             }
-        } catch (e) {
+        } catch {
             // 如果无法访问剪贴板 API，回退到基本文本读取
             try {
                 const text = await navigator.clipboard.readText();
@@ -637,13 +637,13 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
     }
 
     onOpen() {
-        this.display();
+        void this.display();
     }
     private updateHeader() {
 
 
         const previewText = this.getPreviewText();
-        if (this.previewSetting) {
+        if (this.previewSetting) {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
             this.previewSetting.controlEl.querySelector('input').value = previewText;
         }
     }
@@ -730,7 +730,7 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
        
     
         // 链接别名输入（非图片模式时显示）
-        const aliasSetting = new Setting(contentEl)
+        new Setting(contentEl)
             .setName(t("Title"))
             .addText((text) => {
                 this.linkAliasInput = text;
@@ -768,8 +768,8 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
     
         // URL 错误提示
         this.urlErrorMsg = urlSetting.descEl.createDiv("url-error");
-        this.urlErrorMsg.style.color = "var(--text-error)";
-        this.urlErrorMsg.style.display = "none";
+        this.urlErrorMsg.setCssStyles({ color: "var(--text-error)" });
+        this.urlErrorMsg.setCssStyles({ display: "none" });
     
         // 嵌入选项
         const embedSetting = new Setting(contentEl)
@@ -782,7 +782,6 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
             .onChange((value) => {
                 this.isEmbed = value;
                 const imageSizeEl = contentEl.querySelector('.image-size-setting');
-                const aliasSettingEl = aliasSetting.settingEl;
                 if (imageSizeEl) {
                     (imageSizeEl as HTMLElement).style.display = value ? 'flex' : 'none';
                 }
@@ -862,13 +861,13 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
     
         const shortcutHint = contentEl.createDiv("shortcut-hint");
         shortcutHint.setText(`${Platform.isMacOS ? "⌘" : "Ctrl"} + Enter ${t("to insert")}`);
-        shortcutHint.style.textAlign = "right";
-        shortcutHint.style.fontSize = "0.8em";
-        shortcutHint.style.opacity = "0.7";
-        shortcutHint.style.marginTop = "5px";
+        shortcutHint.setCssStyles({ textAlign: "right" });
+        shortcutHint.setCssStyles({ fontSize: "0.8em" });
+        shortcutHint.setCssStyles({ opacity: "0.7" });
+        shortcutHint.setCssStyles({ marginTop: "5px" });
     
         // 按钮
-        const buttonSetting = new Setting(contentEl)
+        new Setting(contentEl)
             .addButton((btn) => {
                 btn
                     .setButtonText(t("Insert"))
@@ -888,7 +887,7 @@ private matchLinkInLine(line: string, startPos: number, endPos: number, lineNumb
             );
     
         // 设置光标聚焦逻辑
-        setTimeout(() => {
+        window.setTimeout(() => {
             if (!this.linkText && !this.linkUrl) {
                 this.linkTextInput.inputEl.focus();
             } else if (!this.linkText && this.linkUrl) {
@@ -913,8 +912,8 @@ private async fetchRemoteTitle(url: string): Promise<string> {
         if (!view) return null;
     
         // 获取编辑器内容区域
-    const editorEl = view.contentEl.querySelector('.markdown-source-view .cm-content') as HTMLElement;
-    const containerEl = view.contentEl as HTMLElement;
+    const editorEl = view.contentEl.querySelector<HTMLElement>('.markdown-source-view .cm-content');
+    const containerEl = view.contentEl;
     if (!editorEl || !containerEl) return null;
 
     const editorWidth = editorEl.offsetWidth;
@@ -930,7 +929,7 @@ private async fetchRemoteTitle(url: string): Promise<string> {
             if (this.linkUrl) {
                 imgEls.forEach((img) => {
                     if (img.src === this.linkUrl && img.complete && img.naturalWidth > 0) {
-                        targetImg = img as HTMLImageElement;
+                        targetImg = img;
                     }
                 });
             }
@@ -967,17 +966,17 @@ private async fetchRemoteTitle(url: string): Promise<string> {
 
     private validateUrl(url: string) {
         if (!url) {
-            this.urlErrorMsg.style.display = "none";
+            this.urlErrorMsg.setCssStyles({ display: "none" });
             return true;
         }
 
         if (!this.isValidUrl(url)) {
             this.urlErrorMsg.textContent = t("URL Format Error");
-            this.urlErrorMsg.style.display = "block";
+            this.urlErrorMsg.setCssStyles({ display: "block" });
             return false;
         }
 
-        this.urlErrorMsg.style.display = "none";
+        this.urlErrorMsg.setCssStyles({ display: "none" });
         return true;
     }
 
@@ -989,7 +988,7 @@ private async fetchRemoteTitle(url: string): Promise<string> {
         const editor = this.plugin.commandsManager.getActiveEditor();
         if (!editor) return;
 
-        let linkText = this.linkText || this.linkUrl;
+        const linkText = this.linkText || this.linkUrl;
         const linkUrl = this.linkUrl;
 
         // 构建链接文本
@@ -1069,7 +1068,7 @@ private async fetchRemoteTitle(url: string): Promise<string> {
         }
 
         // 在下一个事件循环中设置光标位置，确保编辑器已更新
-        setTimeout(() => {
+        window.setTimeout(() => {
             // 将光标移动到链接后面
             if (newCursorPos) {
                 editor.setCursor(newCursorPos);
@@ -1081,29 +1080,29 @@ private async fetchRemoteTitle(url: string): Promise<string> {
 
     // 更新 UI 显示
     private updateUI() {
-        if (this.linkTextInput) {
+        if (this.linkTextInput) {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
             this.linkTextInput.setValue(this.linkText);
         }
-        if (this.linkUrlInput) {
+        if (this.linkUrlInput) {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
             this.linkUrlInput.setValue(this.linkUrl);
             this.validateUrl(this.linkUrl);
         }
 
         // 更新图片尺寸输入框
-        const widthInput = this.contentEl.querySelector('.image-width-input') as HTMLInputElement;
-        const heightInput = this.contentEl.querySelector('.image-height-input') as HTMLInputElement;
+        const widthInput = this.contentEl.querySelector<HTMLInputElement>('.image-width-input');
+        const heightInput = this.contentEl.querySelector<HTMLInputElement>('.image-height-input');
         if (widthInput) widthInput.value = this.imageWidth;
         if (heightInput) heightInput.value = this.imageHeight;
 
         // 更新别名输入框
-        if (this.linkAliasInput) {
+        if (this.linkAliasInput) {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
             this.linkAliasInput.setValue(this.linkAlias);
         }
 
         // 更新别名设置的显示状态
         const aliasSettingEl = this.contentEl.querySelector('.setting-item:nth-child(2)');
         if (aliasSettingEl) {
-            (aliasSettingEl as HTMLElement).style.display =  'flex';
+            (aliasSettingEl as HTMLElement).setCssStyles({ display: 'flex' });
         }
         this.updateHeader();
     }

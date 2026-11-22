@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 
 // statusBarConstants.ts calls `activeWindow.document` when requireApiVersion()
 // returns true (as it does in the mock).  In jsdom, `window === globalThis`, so
@@ -29,6 +29,19 @@ function makeSettings(
 
 describe("setMenuVisibility", () => {
   let toolbar: HTMLElement;
+
+  beforeAll(() => {
+    Object.defineProperty(HTMLElement.prototype, "setCssStyles", {
+      configurable: true,
+      value(this: HTMLElement, styles: Partial<CSSStyleDeclaration>) {
+        Object.assign(this.style, styles);
+      },
+    });
+  });
+
+  afterAll(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, "setCssStyles");
+  });
 
   beforeEach(() => {
     // Create a toolbar element with the attribute-based selector used in the

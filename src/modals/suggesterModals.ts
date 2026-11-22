@@ -1,6 +1,6 @@
 import type editingToolbarPlugin from "src/plugin/main";
 import { appIcons } from "src/icons/appIcons";
-import { Notice, Command, setIcon, FuzzyMatch, FuzzySuggestModal, Modal, SliderComponent, TextAreaComponent, TextComponent, debounce, App } from "obsidian";
+import { Notice, Command, setIcon, FuzzyMatch, FuzzySuggestModal, Modal, SliderComponent, TextComponent, debounce, App } from "obsidian";
 import { findmenuID } from "src/util/util";
 import { setBottomValue, setHorizontalValue } from "src/util/statusBarConstants";
 import { t } from "src/translations/helper";
@@ -10,13 +10,13 @@ export type IconSelectCallback = (iconId: string) => void;
 
 export class ChooseFromIconList extends FuzzySuggestModal<string> {
   plugin: editingToolbarPlugin;
-  command: any;
+  command: Command;
   issub: boolean;
   currentEditingConfig:string;
   customCallback: IconSelectCallback | null = null;
   constructor(
     plugin: editingToolbarPlugin, 
-    command: any, 
+    command: Command,
     issub: boolean = false,
     callback?: IconSelectCallback,
     currentEditingConfig?:string
@@ -63,7 +63,7 @@ export class ChooseFromIconList extends FuzzySuggestModal<string> {
     super.renderSuggestion(icon, iconItem);
   }
 
-  async onChooseItem(item: string): Promise<void> {
+  async onChooseItem(item: string): Promise<void> {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
     // 处理自定义图标选项
     if (item === "Custom") {
       // 如果有自定义回调，打开自定义图标输入框并将结果传递给回调
@@ -97,7 +97,7 @@ export class ChooseFromIconList extends FuzzySuggestModal<string> {
     const currentCommands = this.plugin.getCurrentCommands(this.currentEditingConfig);
     // 没有自定义回调，使用默认的命令图标设置逻辑
     if (this.command.icon) { // 存在就修改不存在新增
-      let menuID = findmenuID(this.plugin, this.command, this.issub,currentCommands);
+      const menuID = findmenuID(this.plugin, this.command, this.issub,currentCommands);
       if (this.issub) {
         currentCommands[menuID['index']].SubmenuCommands[menuID['subindex']].icon = item;
       } else {
@@ -113,13 +113,9 @@ export class ChooseFromIconList extends FuzzySuggestModal<string> {
     }
 
     await this.plugin.saveSettings();
-    setTimeout(() => {
+    window.setTimeout(() => {
       dispatchEvent(new Event("editingToolbar-NewCommand"));
     }, 100);
-    console.log(
-      `%c命令 '${this.command.name}' 已添加到编辑工具栏`,
-      "color: Violet"
-    );
   }
 }
 
@@ -129,7 +125,7 @@ export class CustomIcon extends Modal {
   item: Command;
   issub: boolean;
   currentEditingConfig:string;
-  submitEnterCallback: (this: HTMLTextAreaElement, ev: KeyboardEvent) => any;
+  submitEnterCallback: (this: HTMLTextAreaElement, ev: KeyboardEvent) => unknown;
   customCallback: IconSelectCallback | null = null;
 
   constructor(
@@ -154,15 +150,15 @@ export class CustomIcon extends Modal {
     const { contentEl } = this;
     contentEl.createEl("b", { text: t("Enter the icon code, format as <svg>.... </svg>") });
     
-    const textComponent = document.createElement("textarea");
+    const textComponent = createEl("textarea");
     textComponent.className = "wideInputPromptInputEl";
     textComponent.placeholder = "";
     textComponent.value = this.item.icon || '';
-    textComponent.style.width = "100%";
-    textComponent.style.height = "200px";
+    textComponent.setCssStyles({ width: "100%" });
+    textComponent.setCssStyles({ height: "200px" });
     contentEl.appendChild(textComponent);
     
-    textComponent.addEventListener("input", async () => {
+    textComponent.addEventListener("input", async () => {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
       const value = textComponent.value;
       
       // 如果有自定义回调，则使用自定义回调
@@ -177,12 +173,12 @@ export class CustomIcon extends Modal {
       const menuID = findmenuID(this.plugin, this.item, this.issub,currentCommands);
       
       if (!this.issub) { // 不是子项
-        let index = menuID['index'];
+        const index = menuID['index'];
         index === -1 
           ? this.plugin.settings.menuCommands.push(this.item) 
           : (this.plugin.settings.menuCommands[index].icon = this.item.icon);
       } else {
-        let subindex = menuID['subindex'];
+        const subindex = menuID['subindex'];
         subindex === -1 
           ? this.plugin.settings.menuCommands[menuID["index"]].SubmenuCommands.push(this.item) 
           : this.plugin.settings.menuCommands[menuID['index']].SubmenuCommands[subindex].icon = value;
@@ -204,7 +200,7 @@ export class CustomIcon extends Modal {
     if (this.customCallback) {
       this.customCallback(this.item.icon || '');
     } else {
-      setTimeout(() => {
+      window.setTimeout(() => {
         dispatchEvent(new Event("editingToolbar-NewCommand"));
       }, 100);
     }
@@ -217,30 +213,29 @@ export class CommandPicker extends FuzzySuggestModal<Command> {
   currentEditingConfig:string;
   constructor(private plugin: editingToolbarPlugin,currentEditingConfig?:string) {
     super(plugin.app);
-    this.app;
     this.setPlaceholder(t("Choose a command"));
     this.currentEditingConfig = currentEditingConfig || "";
   }
 
   getItems(): Command[] {
-    //@ts-ignore
-    return app.commands.listCommands();
+    //@ts-expect-error - Obsidian API type mismatch
+    return window.app.commands.listCommands();
   }
 
   getItemText(item: Command): string {
-    return t(item.name as any);
+    return t(item.name);
   }
 
-  async onChooseItem(item: Command): Promise<void> {
+  async onChooseItem(item: Command): Promise<void> {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
     // 获取当前命令配置
     
     const currentCommands = this.plugin.getCurrentCommands(this.currentEditingConfig);
 
-    let index = currentCommands.findIndex((v) => v.id == item.id);
+    const index = currentCommands.findIndex((v) => v.id == item.id);
 
     if (index > -1) // 命令已存在
     {
-      new Notice(t("The command") + t(item.name as any) + t("already exists"), 3000);
+      new Notice(t("The command") + t(item.name) + t("already exists"), 3000);
       return;
     } else {
       if (item.icon) {
@@ -249,13 +244,9 @@ export class CommandPicker extends FuzzySuggestModal<Command> {
         // 更新当前配置，传递配置样式参数
         this.plugin.updateCurrentCommands(currentCommands, this.currentEditingConfig);
         await this.plugin.saveSettings();
-        setTimeout(() => {
+        window.setTimeout(() => {
           dispatchEvent(new Event("editingToolbar-NewCommand"));
         }, 100);
-        console.log(
-          `%c命令 '${item.name}' 已添加到编辑工具栏`,
-          "color: Violet"
-        );
       } else {
         // 使用统一的图标选择器，传递当前编辑的配置
         new ChooseFromIconList(this.plugin, item, false, null, this.currentEditingConfig).open();
@@ -272,7 +263,7 @@ export class ChangeCmdname extends Modal {
   item: Command;
   issub: boolean;
   currentEditingConfig:string;
-  submitEnterCallback: (this: HTMLInputElement, ev: KeyboardEvent) => any;
+  submitEnterCallback: (this: HTMLInputElement, ev: KeyboardEvent) => unknown;
   constructor(app: App, plugin: editingToolbarPlugin, item: Command, issub: boolean,currentEditingConfig?:string) {
     super(plugin.app);
     this.plugin = plugin;
@@ -294,11 +285,11 @@ export class ChangeCmdname extends Modal {
         // 获取当前命令配置
         const currentCommands = this.plugin.getCurrentCommands(this.currentEditingConfig);
         
-        let menuID = findmenuID(this.plugin, this.item, this.issub,currentCommands)
+        const menuID = findmenuID(this.plugin, this.item, this.issub,currentCommands)
         this.item.name = value;
         if (!this.issub) //不是子项
         {
-          let index = menuID['index']
+          const index = menuID['index']
           //  console.log(index,"index")
           if (index === -1) {
             currentCommands.push(this.item);
@@ -306,7 +297,7 @@ export class ChangeCmdname extends Modal {
             currentCommands[index].name = this.item.name;
           }
         } else {
-          let subindex = menuID['subindex']
+          const subindex = menuID['subindex']
           if (subindex === -1) {
             currentCommands[menuID["index"]].SubmenuCommands.push(this.item);
           } else {
@@ -323,7 +314,7 @@ export class ChangeCmdname extends Modal {
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
-    setTimeout(() => {
+    window.setTimeout(() => {
       dispatchEvent(new Event("editingToolbar-NewCommand"));
     }, 100);
   }
@@ -394,7 +385,7 @@ export class openSlider extends Modal {
         this.needSave = true;
         this.plugin.settings.cMenuNumRows = value;
         await this.plugin.saveSettings();
-        setTimeout(() => {
+        window.setTimeout(() => {
           dispatchEvent(new Event("editingToolbar-NewCommand"));
         }, 100);
       }, 100, true))
@@ -422,7 +413,7 @@ export class openSlider extends Modal {
     });
   }
 
-  async onClose() {
+  async onClose() {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
     const { contentEl } = this;
     contentEl.empty();
 

@@ -1,640 +1,423 @@
 # Changelog
 
-## 4.0.8 (2026-05-01)
-### 4.0.8 国际化部分字段，ai能力全面放开
-### canvas输入面板支持双链
-### Merge branch 'master' of https://github.com/PKM-er/obsidian-editing-toolbar
-### Update manifest.json and CHANGELOG.md for version 4.0.6
-
-
-## 4.0.6 (2026-04-21)
-### 4.0.6
-### 增加长上下文压缩机制
-### 增加模板变量引入和双链支持
-### 自定义改写框支持模板
-###  #312 fixed
-### #311 fixed
-### Merge branch 'master' of https://github.com/PKM-er/obsidian-editing-toolbar
-### Update manifest.json and CHANGELOG.md for version 4.0.4
-
-
-## 4.0.4 (2026-04-10)
-### 4.0.4
-### Merge branch 'pr/305'
-### #306 修复按钮中文化
-### 优化授权登录提示
-### Fix toolbar icon transition on hide
-### 修复设置面板报错
-### Update manifest.json and CHANGELOG.md for version 4.0.3
-
-
-## 4.0.3 (2026-04-07)
-### AI 兼容性、移动端/iPad 体验，以及工具栏界面的细节打磨。
-AI 兼容性
-优化自定义模型的 API 地址解析逻辑，不再强依赖 v1 协议。
-支持直接填写完整的 .../chat/completions 地址，插件将原样使用。
-支持 .../v1、.../v3 等版本根地址，自动补全为对应的 .../chat/completions。
-对仅填写基础地址的情况增加更稳健的智能探测与回退策略，提升对不同厂商接口的兼容性。
-已验证可正常兼容火山引擎 https://ark.cn-beijing.volces.com/api/v3 这类地址。
-移动端 / iPad AI 体验优化
-移动端点击 AI 主按钮时，始终弹出菜单，不再直接执行上一次 AI 指令，降低误触风险。
-AI 菜单中的“触发 AI 行内补全”改为可直接点击的动作，不再只是快捷键提示。
-部分 AI 改写类指令在移动端不再强依赖选中文本；无选区时会优先使用当前光标所在段落/块作为上下文。
-AI Custom Rewrite 针对移动端优化为“回车换行 + 单独发送按钮”，避免误发送。
-AI 菜单在成功触发指令后才会关闭；若只是弹出提示或条件不满足，菜单会保持打开。
-AI 生成期间，工具栏 AI 按钮会进入忙碌态并临时禁用，避免连续点击重复触发。
-工具栏移动端布局优化
-手机上启用 AI 功能后，AI 按钮自动切换为更紧凑的显示方式，减少对主工具栏宽度的挤占。
-调整 shouldMoveButtonToMoreMenu 的移动端判断策略，额外预留一个按钮位，避免最后一个按钮贴边难点。
-优化手机端 More/更多入口的可达性，减轻横向滑动与 Obsidian 侧边栏手势冲突的问题。
-界面与视觉改进
-glass 风格调整为优先复用 Obsidian 官方的 raised/glassy CSS 变量，不再依赖额外 JS 注入，兼容新版原生视觉体系。
-Changelog / 更新日志窗口标题现在会显示插件名称，信息更完整清晰。
-英文 tooltip 中不再显示 Editing Toolbar: 前缀，提示内容更简洁。
-国际化改进
-修复工具栏 tooltip 在中文环境下仍显示英文的问题。
-工具栏按钮、子菜单、预览按钮及部分 AI 可访问性标签补齐国际化。
-补充一批默认工具栏命令和 AI 文案的中英文翻译。
-### 移动端 / iPad AI 体验优化
-### #289 fixed
-### #304 fixed
-### #302 进一步对按钮文字国际化
-### Merge branch 'master' of https://github.com/PKM-er/obsidian-editing-toolbar
-### Update feature_request.md
-### Update bug_report.md
-### Update bug_report.md
-### 自定义模型支持完整url
-### Update manifest.json and CHANGELOG.md for version 4.0.2
-
-
-## 4.0.2 (2026-04-03)
-### Update manifest.json
-4.0.2 目前AI功能仅对中文用户生效
-### 1.AI工具箱
-- **智能改写**：优化表达、修正语法、总结提炼、解释说明
-- **格式转换**：一键转为列表/表格/Canvas可视化
-- **生成Frontmatter**：自动提取关键信息生成文档属性
-- 🎨**自定义AI指令**：支持个性化改写需求
-- 📊**生成**Canvas: 根据内容生成思维导图
-### 2.AI内联自动补全
-开启后享受**无缝写作体验**，AI实时预测并建议后续内容，按`Tab`即可快速采纳，不打断创作思路
-### Merge branch 'master' of https://github.com/PKM-er/obsidian-editing-toolbar
-### Update manifest.json and CHANGELOG.md for version 4.0.0
-
-
-## 4.0.0 (2026-04-03)
-### 4.0.0(2026-04-03)
-## ✨NewFeatures
-### 将AI能力深度集成至编辑器工具栏，打造更智能、更流畅的写作体验。
-### 1.AI工具箱
-- **智能改写**：优化表达、修正语法、总结提炼、解释说明
-- **格式转换**：一键转为列表/表格/Canvas可视化
-- **生成Frontmatter**：自动提取关键信息生成文档属性
-- 🎨**自定义AI指令**：支持个性化改写需求
-- 📊**生成**Canvas: 根据内容生成思维导图
-### 2.AI内联自动补全
-开启后享受**无缝写作体验**，AI实时预测并建议后续内容，按`Tab`即可快速采纳，不打断创作思路。
-### 3.Pkmer生态无缝接入
-- **授权登录**：支持Pkmer账号直接登录，一键接入免费AI服务
-- **权限打通**：无需额外配置，社区权益直接同步
-## 🔧Improvements
-- 优化整体交互体验，提升工具栏响应流畅度
-- 修复重复命令，精简命令列表
-- 优化"更多按钮"的出现时机，避免意外触发
-## 🐛BugFixes
-- ** #299**修复按钮子菜单切换为下拉子菜单后无法触发的问题
-- **#295**修复在新窗口中跟随工具栏无法触发的问题
-- **#294**修复某些主题下按钮消失后存在视觉残留的问题
-- **#291** 修复与Velocity主题不兼容的问题
-### 增加友好的错误提示
-### 优化体验
-### 修复更多按钮出现时机
-### #294 修复某些主题按钮消失存在残留
-### #291 修复Velocity theme 不兼容
-### #295 修复是新窗口无法触发跟随工具栏
-### 增加中文授权登录
-### #299 修复按钮子菜单转下拉子菜单，无法触发问题
-### 删除重复命令
-### 增加右键菜单
-### 增加AI百宝箱
-### 增加AI功能
-### Update manifest.json and CHANGELOG.md for version 3.2.7
-
-
-## 3.2.7 (2026-01-15)
-### #277 修复 移动端顶部有空白
-### Update manifest.json and CHANGELOG.md for version 3.2.6
-
-
-## 3.2.6 (2026-01-14)
-### 移动端适配其他主题
-### Merge branch 'master' of https://github.com/PKM-er/obsidian-editing-toolbar
-### Update manifest.json and CHANGELOG.md for version 3.2.4
-
-
-## 3.2.4 (2026-01-14)
-### #276 修复移动端工具栏顶部遮挡（适配Obsidian Mobile1.11.4）
-### Update manifest.json and CHANGELOG.md for version 3.2.3
-
-
-## 3.2.3 (2026-01-12)
-### fix：修复命令后工具栏文本箱不出现
-### Update CHANGELOG.md
-### Update manifest.json and CHANGELOG.md for version 3.2.2
-
-
-## 3.2.2 (2026-01-12)
-### 🐛 Bug Fixes
-#### Fixed multi-configuration command synchronization issue
-- **Problem**: When multiple toolbar configurations were enabled (top, following, fixed), adding commands in one configuration would incorrectly sync to other configurations
-- **Root Cause**: The `updateCurrentCommands()` method was using `this.positionStyle` (the currently displayed toolbar style) instead of the configuration being edited in settings
-- **Solution**: Modified `CommandPicker` and `ChooseFromIconList` classes to properly pass the `currentEditingConfig` parameter when updating commands
-- **Impact**: Now each toolbar configuration maintains its own independent command list. Adding, modifying, deleting, and reordering commands in one configuration will not affect other configurations
-#### Auto-add Text Tools submenu to top toolbar
-- **Feature**: When users update the plugin and click the "Repair command" button, the system will automatically add the "Text Tools" submenu to the top toolbar if it doesn't exist
-- **Included Commands**:
-  - Get Plain Text (获取无语法文本)
-  - Full Half Converter (全角半角转换)
-  - Insert Blank Lines (插入空行)
-  - Remove Blank Lines (删除空行)
-  - Split Lines (拆分行)
-  - Merge Lines (合并行)
-  - Dedupe Lines (去重行)
-  - Add Prefix/Suffix (添加前后缀)
-  - Number Lines (Custom) (添加行号)
-  - Trim Line Ends (去除行首尾空格)
-  - Shrink Extra Spaces (压缩多余空格)
-  - Remove All Whitespace (移除所有空白)
-  - List to Table (列表转表格)
-  - Table to List (表格转列表)
-  - Extract Between Strings (提取字符串之间内容)
-### 📝 Technical Details
-**Modified Files**:
-- `src/modals/suggesterModals.ts`: Fixed command synchronization in `CommandPicker` and `ChooseFromIconList` classes
-- `src/modals/updateModal.ts`: Added `checkTextTools()` and `addTextToolsIfNeeded()` functions to automatically add text tools submenu
-### 🔧 How to Update
-1. Update the plugin to version 3.2.2
-2. Reload Obsidian (Ctrl+R or complete restart)
-3. Open Settings → Editing Toolbar
-4. Click "Repair command ID" button to apply the text tools submenu (if using top toolbar)
----
-## 3.2.2 版本说明 (2026-01-12)
-### 🐛 Bug 修复
-#### 修复多配置模式下命令同步问题
-- **问题描述**：当同时启用多个工具栏配置（顶部、跟随、固定）时，在一个配置中添加命令会错误地同步到其他配置
-- **根本原因**：`updateCurrentCommands()` 方法使用了 `this.positionStyle`（当前实际显示的工具栏样式）而不是设置页面正在编辑的配置
-- **解决方案**：修改了 `CommandPicker` 和 `ChooseFromIconList` 类，在更新命令时正确传递 `currentEditingConfig` 参数
-- **影响**：现在每个工具栏配置都能维护自己独立的命令列表。在一个配置中添加、修改、删除、调整命令顺序都不会影响其他配置
-#### 自动添加文本工具子菜单到顶部工具栏
-- **功能说明**：当用户更新插件并点击"修复命令"按钮时，如果顶部工具栏中没有"文本工具"子菜单，系统会自动添加
-- **包含的命令**：
-  - 获取无语法文本 (Get Plain Text)
-  - 全角半角转换 (Full Half Converter)
-  - 插入空行 (Insert Blank Lines)
-  - 删除空行 (Remove Blank Lines)
-  - 拆分行 (Split Lines)
-  - 合并行 (Merge Lines)
-  - 去重行 (Dedupe Lines)
-  - 添加前后缀 (Add Prefix/Suffix)
-  - 添加行号（自定义）(Number Lines)
-  - 去除行首尾空格 (Trim Line Ends)
-  - 压缩多余空格 (Shrink Extra Spaces)
-  - 移除所有空白 (Remove All Whitespace)
-  - 列表转表格 (List to Table)
-  - 表格转列表 (Table to List)
-  - 提取字符串之间内容 (Extract Between Strings)
-### 📝 技术细节
-**修改的文件**：
-- `src/modals/suggesterModals.ts`：修复了 `CommandPicker` 和 `ChooseFromIconList` 类中的命令同步问题
-- `src/modals/updateModal.ts`：添加了 `checkTextTools()` 和 `addTextToolsIfNeeded()` 函数来自动添加文本工具子菜单
-### 🔧 如何更新
-1. 将插件更新到 3.2.2 版本
-2. 重新加载 Obsidian（Ctrl+R 或完全重启）
-3. 打开设置 → Editing Toolbar
-4. 点击"修复命令 ID"按钮以应用文本工具子菜单（如果使用顶部工具栏）
-### 🙏 致谢
-感谢所有报告问题和提供反馈的用户！
-### #266 支持子菜单改名
-### #272 #274 fixed
-### 相关命令国际化
-### Feat:增加文本处理工具
-  Line Operations（行操作）：
-  - Get Plain Text
-  - Full Half Converter
-  - Insert Blank Lines
-  - Remove Blank Lines
-  - Split Lines
-  - Merge Lines
-  - Dedupe Lines
-  Text Processing（文本处理）：
-  - Add Prefix/Suffix ✨ 新增
-  - Number Lines (Custom) ✨ 更新名称
-  - Trim Line Ends
-  - Shrink Extra Spaces ✨ 更新名称
-  - Remove All Whitespace
-  Advanced Tools（高级工具）：
-  - List to Table
-  - Table to List
-  - Extract Between Strings
-### 子菜单可以改名可以设置为按钮和菜单两种形式
-### Add Portuguese translations for Editing Toolbar settings and commands
-### Merge pull request #268 from davidvkimball/master
-Fixed issue where it conflicted with the Settings Search plugin.
-### Update manifest.json and CHANGELOG.md for version 3.2.1
-### Fixed issue where it conflicted with the Settings Search plugin. If editing toolbar was hidden, and you reloaded Obsidian, it would show anyway, even though it was hidden. This fixes this conflict.
-
- 
-
----
-
-## 3.2.1 (2026-01-04)
-### Fixed issue where it conflicted with the Settings Search plugin. If editing toolbar was hidden, and you reloaded Obsidian, it would show anyway, even though it was hidden. This fixes this conflict.
-### Update CHANGELOG.md
-### Update manifest.json and CHANGELOG.md for version 3.2.0
-
-
-
-## 3.2.0 – Multi-toolbar and settings overhaul (2025-12-05)
-
-
-🎉 Release v3.2.0
-
-  这是一个重大更新版本，全面改进了工具栏的启用、配置和预览方式，并优化了设置界面的文本和翻译。 
-
-  **从旧版本升级到 v3.2.0 后，请完全重启 Obsidian**   
-
-  ✨ 新功能
-
-  🎯 多工具栏同时运行 #259
-
-  - 独立工具栏切换：顶部、跟随和固定工具栏现在可以在"设置 → 常规"中独立切换
-  - 可以单独运行一个工具栏，或同时运行任意两个，甚至三个全部启用
-
-  ⚙️ 激活与外观分离
-
-  - 工具栏的激活状态仅由"设置 → 常规"中的切换开关控制
-  - 原有的"编辑工具栏位置"控制已重构为"工具栏设置"部分，仅控制所选工具栏的外观和行为（位置、布局等），而不控制工具栏类型
-
-  🎨 独立命令集
-
-  - "命令"选项卡现在支持三种工具栏类型
-  - 每个工具栏都有自己的命令配置，顶部、跟随和固定工具栏可以拥有不同的按钮集，互不覆盖
-
-  👁️ 更新的预览面板
-
-  - 预览面板专注于显示所选工具栏的外观（位置、方向、布局）
-  - 固定工具栏预览已标准化
-
-  🔧 正则命令增强 (#265)
-
-  - 支持对当前行应用正则表达式操作，无需选中整行即可快速处理 (感谢 @felix)
-
-  🐛 Bug 修复
-
-  - 修复工具栏可能意外镜像或复制彼此命令配置的问题
-  - 修复外观和主题设置可能跨工具栏模式泄漏的问题，现在正确限定在所选工具栏范围内
-  - 修复子菜单被遮挡的显示问题
-  - 修复早期工具栏更改引入的一些小布局故障
-  - 修复部分翻译错误
-
-  ⚡ 性能优化
-
-  - 增加工具栏缓存机制，显著提升响应速度和用户体验
-
-  🔧 改进
-
-  设置布局和措辞
-
-  - 将设置重新组织为更清晰的"常规"与"外观"分组
-  - 在整个 UI 中统一三种工具栏类型的命名
-  - 清理标签和描述，使英文措辞更清晰，标点更一致
-
-  视觉优化
-
-  - 清理所有工具栏变体的 CSS，实现更一致的间距、对齐和悬停状态
-  - 进行小幅调整，使工具栏在不同宽度和缩放级别下保持可读性和整洁
-  - 更新"玻璃"主题以提高可读性
-
-  UI 优化
-
-  - 语义化标签 (#257)：高亮背景色改用 <mark> 标签，替代 <span> 标签 (感谢 @MarkusRitschel)
-  - 命令名称优化 (#250)：更新工具栏、命令面板和工具提示的命令名称，提升易用性 (感谢 @NicolaiSkodtHolmgaard)
-  - 更改正则命令相关选项的位置，优化设置界面布局
-  - 取消中键关闭功能，改为支持右键关闭格式刷
-
-  🌍 国际化 (#259)
-
-  - 大规模翻译改进：全面更新多语言翻译文件 (感谢 @MiserMagus)
-    - en (默认英语)
-    - en-gb (新增英式英语变体)
-    - zh-cn (简体中文)
-  - 新的 en-gb 语言环境使用英式拼写和标点符号
-  - 所有当前设置文本现已完全翻译，并与新的配置流程保持一致
-  - 修复设置界面、模态框和命令的翻译问题
-  - 更新 CHANGELOG 文档
-
-  📦 兼容性
-
-  - 导入/导出行为在此版本中保持不变
-  - 现有配置文件保持兼容
-
-  🙏 致谢
-
-  特别感谢以下贡献者对本次重大发布的贡献：
-
-  - @MiserMagus - 多工具栏实现！大量的翻译改进、文档更新和设置界面重构工作
-  - @felix - 实现正则表达式当前行支持功能
-  - @MarkusRitschel - 改进高亮标签的语义化实现
-  - @NicolaiSkodtHolmgaard - 优化命令名称和用户界面
-  
-
-This release overhauls how toolbars are enabled, configured, and previewed, and cleans up the settings UI text and translations.
-
-### New
-
-- Multiple toolbar types at the same time
-  - Top, Following, and Fixed toolbars can now be toggled individually in **Settings → General**.
-  - You can run a single toolbar, any two of them, or all three together.
-
-- Clear separation of activation vs appearance
-  - Which toolbars are active is controlled only by the toggles in **Settings → General**.
-  - The old “Editing toolbar position” control has been reworked into a **Toolbar Settings** section that only controls how the selected toolbar looks and behaves (position, layout, etc.), not which toolbar is represented.
-
-- Per-toolbar command sets
-  - The **Commands** tab is now aware of the three toolbar types.
-  - Each toolbar has its own command configuration, so Top, Following, and Fixed can all have different button sets without overwriting one another.
-
-- Updated preview panel
-  - The preview focuses on showing the selected toolbar’s appearance (position, orientation, layout) as you adjust settings.
-  - It still does not mirror the command set.
-  - "Fixed toolbar" preview has been normalised.
-
-### Improvements
-
-- Settings layout and wording
-  - Reorganised settings into clearer **General** vs **Appearance** groups.
-  - Normalised naming for the three toolbar types across the UI.
-  - Cleaned up labels and descriptions for clearer wording and more consistent punctuation in English.
-
-- Visual polish
-  - CSS clean-up across all toolbar variants for more consistent spacing, alignment, and hover states.
-  - Small adjustments to keep toolbars readable and tidy at different widths and zoom levels.
-  - Updated the "glass" theme for better readability.
-
-### Localization / translations
-
-- Updated built-in locales for all new and renamed settings strings:
-  - `en` (default English),
-  - `en-gb` (new British English variant),
-  - `zh-cn` (Simplified Chinese).
-- The new `en-gb` locale mirrors the default English text but uses British spelling and punctuation.
-- For these locales, all current settings text should now be fully translated and consistent with the new configuration flow.
-
-### Fixes
-
-- Fixed issues where:
-  - Toolbars could unintentionally mirror or copy each other’s command configuration.
-  - Appearance and theme settings could bleed across toolbar modes instead of staying scoped to the selected toolbar.
-- Fixed a few minor layout glitches introduced by earlier toolbar changes.
-
-### Unchanged
-
-- Import/export behaviour is unchanged in this release; existing configuration files remain compatible.
-
-
-## 3.1.18 (2025-07-10)
-### 国际化部分字段
-### 修复自定义正则命令，换行符\n无效
-修复自定义正则命令，换行符\n无效
-修复命令列表设置时 点击事件跟拖动列表事件冲突
-支持笔记属性增加 cssclasses:hide-toolbar 对某个笔记隐藏工具栏。
-### #226 fixed
-### Update manifest.json and CHANGELOG.md for version 3.1.16
-
-
-## 3.1.16 (2025-05-15)
-### Update manifest.json
-### Update commands.ts
-### 自定义命令 支持添加换行符等
-### Update manifest.json and CHANGELOG.md for version 3.1.15
-
-
-## 3.1.15 (2025-05-14)
-### #219 fixed
-添加callout 支持 admonition 插件的自定义的callout类型
-### Update manifest.json and CHANGELOG.md for version 3.1.14
-
-
-## 3.1.14 (2025-05-12)
-### #220  fixed
-When the toolbar position is top, add an option to set whether the toolbar is full-width or centred.
-### Update README.md
-### Update README-zh_cn.md
-### Update manifest.json and CHANGELOG.md for version 3.1.13
-
-
-## 3.1.13 (2025-03-30)
-### 增加格式刷应用时光标特殊效果
-### 优化格式刷命令，会自动识别光标所在格式
-支持选中callout文本，应用格式刷。
-### 确认对话框更改为模态框
-### 图片链接也可以设置title
-### Update manifest.json and CHANGELOG.md for version 3.1.12
-
-
-## 3.1.12 (2025-03-29)
-### 增加获取远程url标题，自适应图片宽度
-### 优化对链接格式判断逻辑
-### Update manifest.json
-### Merge branch 'master' of https://github.com/PKM-er/obsidian-editing-toolbar
-### Update manifest.json and CHANGELOG.md for version 3.1.10
-
-
-## 3.1.10 (2025-03-28)
-### 右键增加链接，图片修改模态框
-### Update CHANGELOG.md
-### Update manifest.json and CHANGELOG.md for version 3.1.9
-
-
-## 3.1.9 (2025-03-27)
-### ADD Renumber  List
-### Update manifest.json and CHANGELOG.md for version 3.1.8
-![renumber](https://github.com/user-attachments/assets/d086221e-38c8-4c23-b5fd-86766694d957)
-
-
-## 3.1.8 (2025-03-22)
-### #214 fixed 兼容 Excalidraw
-### Update manifest.json and CHANGELOG.md for version 3.1.7
-
-
-## 3.1.7 (2025-03-22)
-### fix：移动端固定模式失效
-### Update manifest.json and CHANGELOG.md for version 3.1.6
-
-
-## 3.1.6 (2025-03-21)
-### 移动端设备开启following时屏蔽系统菜单
-### 优化following工具栏位置展示
-###  解决移动端选中文本无法触发following样式
-### Update CHANGELOG.md
-### Update manifest.json and CHANGELOG.md for version 3.1.5
-
-
-## 3.1.5 (2025-03-20)
-### #35 #55 #203 feat: Support toolbar theme & icon size!!
-![image](https://github.com/user-attachments/assets/dc75340a-5b59-4212-ae4f-3b17ab6242d9)
-### 多配置下，状态栏切换位置也可以初始化工具栏
-### Update manifest.json and CHANGELOG.md for version 3.1.4
-
-
-## 3.1.4 (2025-03-19)
-### 优化跟随模式工具栏位置
-- 如果执行命令后文本仍然是选中状态，工具栏不会消失。
-- 当选择范围都在一行工具栏总在上方出现。
-### #184 #152 优化following模式呼出逻辑
-- 双击鼠标中键可以在不选择文本情况下呼出following菜单
-- 键盘选择也可以呼出菜单
-- 修复某些主题下显示异常
-### Update manifest.json and CHANGELOG.md for version 3.1.3
-
-
-## 3.1.3 (2025-03-18)
-### #207 现在工具栏支持添加到任何视图类型
-- 通过在状态栏控制当前视图类型下启用还是禁用。
-- 视图类型一旦禁用，此类视图都不会再显示工具栏
-### 状态栏增加外观设置，视图设置
-### 优化工具栏显示规则
-对于不在允许列表中的视图类型：
-总是隐藏工具栏
-对于Markdown视图：
-在源码（编辑）模式下：
-following样式：只有选中文本时才显示
-其他样式：始终显示
-在阅读模式下：
-所有样式：始终隐藏
-对于其他允许的视图类型（canvas、excalidraw等）：
-所有样式：始终显示
-### #211  只对低版本进行更新提示
-### Update CHANGELOG.md
-### Update manifest.json and CHANGELOG.md for version 3.1.2
-
-
-## 3.1.2 (2025-03-17)
-- 增加不同配置文件可以互相导入
-- 针对对每个配置命令可以单独初始化
-- 支持对某个样式工具栏单独导出
-- 优化工具栏子菜单位置，减少被遮挡的概率
-- 完善导入导出信息，增加元数据
-- 增加正则表达式命令
-- 现在可以添加正则格式命令，可以对选中文本和剪贴板数据执行命令并插入当前编辑器中。
-
-
-
-## 3.1.1 (2025-03-14)
-### 添加了导入导出功能
-
-添加了导入导出功能
-
-- 支持三种导出类型：所有设置、仅工具栏命令、仅自定义命令
-- 支持导入功能，覆盖导入（完全清空已有设置）和更新导入（更新已有设置和新增）。
-
-
-
-## 3.1.0 (2025-03-14)
-### 功能亮点
-### 1. 支持自定义命令添加到不同配置文件
-- 增加不同场景（following、top、fixed、mobile）使用单独的工具栏配置
-- 新增自定义命令部署功能，支持将命令添加到不同配置（following、top、fixed、mobile）
-- 添加部署选择界面，可选择将命令部署到单个或多个配置
-- 部署时自动检查目标配置中是否已存在相同命令，避免重复添加
-
-### 2. 自定义命令管理优化
-- 编辑自定义命令时，命令ID设置为只读，防止误修改
-- 添加删除自定义命令会同步更新配置文件
-- 恢复默认设置时保留自定义命令，不再丢失用户自定义内容
-
-### 3. 删除操作安全优化
-- 所有删除操作增加二次确认机制
-
-
-### 注意事项
-1. 多配置功能需要在设置中启用"Enable multiple configurations"
-2. 移动端配置需要启用"Mobile enabled"才会显示
-3. 恢复默认设置时会保留自定义命令，其他设置将重置为默认值
-
-## 3.0.9 (2025-03-13)
-- 增加更新说明 (8341694)
-- Update manifest.json and CHANGELOG.md for version 3.0.8 (56cf078)
-## 3.0.8 (2025-03-13)
-
-### 更新内容 (3.0.7 -> 3.0.8)
-- add changelog (118f535)
-
-- 增加剪贴板链接自动解析命令（Insert Link(Modal)）
-- 智能解析外链图片
-- 智能解析文本中的链接文本 标题 以及别名，快捷转换为md格式并插入。
-- 智能解析外链图片的宽高
-- 优化自定义命令光标偏移判断（当偏移量大于0 才进行光标偏移）
-
-## 3.0.7 (2025-03-13)
-
-## 3.0.5 (2025-03-12)
-
-### 增加智能解析外部链接(图片)功能
-
-## 3.0.4 (2025-03-11)
-
-### 增加callout模态框插入指令
-- 使用之前先修复指令
-
-## 3.0.3 (2025-03-11)
-
-### 增加对excalidraw支持
-- 修复文件上传命令报错
-- 修复excalidraw样
-
-## 3.0.0 Major update！
-
-### ✨新功能
-- 增加一键添加自定义命令到工具栏
-- 增加自定义命令功能
-- 增加对 Callout 格式擦除的支持
-- 支持 Markdown 指令格式刷
-- 增加对 Canvas 视图的支持
-- 增加对 meld-encrypted-view 视图的支持
-- 固定模式下支持水平和垂直调节工具栏
-### 优化
-- 优化 Pickr 引起的内存占用问题
-- 设置项改版
-- 移动端体验优化
-### 修复
-- 修复编辑器光标失焦问题
-- 修改拼写问题
-### 清理
-- 删除冗余文件
-### 重构
-- 代码重构
-### 注意事项
-本次更新后，请在弹窗中点击“修复命令”按钮，以确保之前的旧命令不会失效。
-### ✨New Features
-Added one-click addition of custom commands to the toolbar
-Added custom command functionality
-Added support for erasing Callout format
-Added support for Markdown command format brush
-Added support for Canvas view
-Added support for meld-encrypted-view view
-Added support for horizontal and vertical toolbar adjustments in fixed mode
-Added update notifications
-### Improvements
-Optimized memory usage caused by Pickr
-Revamped settings interface
-Optimised for mobile devices
-### Fixes
-Fixed editor cursor focus loss issue
-Fixed spelling issues
-### Cleanup
-Removed redundant files
-### Refactor
-Code refactoring
-### Notes
-After this update, please click the "Fix Commands" button in the popup to prevent previous commands from becoming invalid.
+## 4.1.14 (2026-11-20)
+### 修复禁用→重新启用插件后首次重启仍出现快照按钮散落（issue #376 跟进）
+- 会话中途禁用再重新启用插件，会把重新注册的 beforeunload 隐藏监听排到
+  Obsidian 快照保存监听之后：退出时快照先序列化（工具栏仍可见），隐藏随后
+  才执行，导致首次重启的启动画面再次出现按钮散落；之后的会话在启动时注册、
+  顺序恢复正确，所以不再复现
+- 修复：beforeunload 钩子按窗口只注册一次（__editingToolbarSnapshotHook
+  标记），跨禁用/启用周期保留、不随插件卸载移除，保证始终先于快照序列化；
+  钩子为纯 DOM 操作，插件禁用状态下触发为无害空操作
+- 生产构建不再内联 sourcemap：base64 映射约占产物一半（1.67MB→834KB），
+  降低每次插件加载（启动/重新启用）时渲染进程的解析成本
+
+
+## 4.1.14 (2026-11-20)
+### 修复"禁用并重新启用插件"后首次重启仍出现启动画面按钮散落（issue #376 跟进）
+- 会话中途禁用再重新启用插件，会把重新注册的 beforeunload 隐藏监听排到
+  Obsidian 快照保存监听之后：退出时快照先序列化（工具栏仍可见），隐藏随后才
+  执行，导致首次重启的启动画面再次出现按钮散落；之后的会话在启动时注册、
+  顺序恢复正确，所以不再复现
+- 修复：beforeunload 钩子按窗口只注册一次，跨禁用/启用周期保留、不随插件
+  卸载移除，保证始终先于快照序列化；插件禁用状态下触发为无害空操作
+### 生产构建移除内联 sourcemap
+- base64 内联映射约占产物一半（1.67MB → 834KB），降低每次插件加载
+  （启动/重新启用）时渲染进程的解析成本
+
+## 4.1.13 (2026-11-19)
+### 修复 Obsidian 1.15.1 启动画面中工具栏按钮散落错位（issue #376）
+- 1.15.1 移除启动画面后，改为在退出/失焦时把当前 DOM 序列化为启动快照，
+  下次启动以冻结 iframe 先行展示。快照序列化器只保留有布局盒的元素，且
+  iframe 解析序列化 DOM 时会破坏工具栏的嵌套结构：按钮被重新挂载到各工作区
+  容器、脱离 bar 的 visibility 继承，冻结画面上按钮散落错位，启动完成后恢复
+- 修复：beforeunload（插件监听注册早于 Obsidian 的快照保存监听）与窗口 blur
+  时将工具栏设为 display:none——序列化器跳过无布局盒的整棵子树，工具栏不再
+  进入快照；focus 时恢复布局盒与可见性
+- 工具栏创建延后到工作区真正揭示（app-container 移除 mod-starting）之后，
+  避免在启动揭示窗口内改动视图 DOM
+- 溢出分割（自动收缩第二排）改用按钮真实渲染宽度计算，创建后绘制前复核一次：
+  首帧即正确分割，个别按钮不再先挤在主栏尾部
+- 启动时不再无条件派发 editingToolbar-NewCommand；设置页仅在真正打开时重建 UI
+- 实测（Obsidian 1.15.1 + CDP 冷启动）：快照 iframe 中工具栏元素为 0，揭示后
+  工具栏首帧即正确分割；失焦/聚焦与最小化/恢复正常
+### 整理 4.1.12 发布说明并修正发布流水线的提交过滤
+- CHANGELOG 的 4.1.12 段去掉混入的上一次 CI 回推提交条目
+- release.yml 的过滤规则补上 "### " 前缀（git log 输出带该前缀，原有规则从未命中，
+  导致每次发布说明都会多一条 "Update manifest.json and CHANGELOG.md for version x"）
+- 同时覆盖 "Update manifest.json, package.json and versions.json" 这种写法
+
+
+## 4.1.13 (2026-11-20)
+### 修复 Obsidian 1.15.1 启动画面中工具栏按钮散落错位（issue #376）
+- 1.15.1 移除启动画面后，改为在退出/失焦时把当前 DOM 序列化为启动快照，
+  下次启动以冻结 iframe 先行展示。快照序列化器只保留有布局盒的元素，且
+  iframe 解析序列化 DOM 时会破坏工具栏的嵌套结构：按钮被重新挂载到各工作区
+  容器、脱离 bar 的 visibility 继承，冻结画面上按钮散落错位，启动完成后恢复
+- 修复：beforeunload（插件监听注册早于 Obsidian 的快照保存监听）与窗口 blur
+  时将工具栏设为 display:none——序列化器跳过无布局盒的整棵子树，工具栏不再
+  进入快照；focus 时恢复布局盒与可见性
+- 工具栏创建延后到工作区真正揭示（app-container 移除 mod-starting）之后，
+  避免在启动揭示窗口内改动视图 DOM
+- 溢出分割（自动收缩第二排）改用按钮真实渲染宽度计算，创建后绘制前复核一次：
+  首帧即正确分割，个别按钮不再先挤在主栏尾部
+- 启动时不再无条件派发 editingToolbar-NewCommand；设置页仅在真正打开时重建 UI
+- 实测（Obsidian 1.15.1 + CDP 冷启动）：快照 iframe 中工具栏元素为 0，揭示后
+  工具栏首帧即正确分割；失焦/聚焦与最小化/恢复正常
+
+## 4.1.12 (2026-11-05)
+### Update manifest.json, package.json and versions.json for version 4.1.12
+### 移动端可点按接受 AI 行内补全
+- 手机/平板没有 Tab 键，此前提示只有"按 Tab 接受补全"，移动端实际无法接受补全
+- 提示现在可点击/点按：pointerdown 与 touchend 两条路径均可接受补全（捕获阶段 +
+  preventDefault，避免 CodeMirror 移动光标导致补全被清空）
+- 移动端提示常驻显示（不再受"已学会"标记影响——它是移动端唯一入口），文案改为
+  "点按接受补全" / "Tap to accept"，并加大点击区域（min-height 28px、4px 10px 内边距）
+- .cm-ai-ghost-text 保持 pointer-events: none（避免幽灵文本挡住输入），仅提示自身恢复 auto
+- 桌面行为不变：Tab 仍可接受、提示在首次接受后隐藏；提示显示时同样可以点击
+- 实测（Obsidian 1.14.5）：桌面点击提示成功插入补全、Tab 路径正常；移动端分支
+  （沙盒强制 isMobileApp）文案/常驻/样式正确，点按可接受
+### 修复安卓上 AI 自定义改写面板发送按钮点按无效（issue #344）
+- 面板为 position:fixed 且监听 scroll/resize 重定位；安卓软键盘 pan 会触发
+  scroll，若重定位恰好落在 touchstart 与合成 click 之间，这次点按会被系统
+  取消——用户只看到 hover 高亮，不发送（issue 报告的现象）
+- touch 事件的 target 固定在 touchstart 的元素上，不受面板移动影响；现在
+  发送按钮增加 touchend 直发（preventDefault 防止合成 click 重复提交）
+- 桌面 click 路径保持不变
+- 实测（CDP 模拟点按序列）：面板在按下与抬起之间移位 120px 时，click 路径
+  点按丢失（无任何信号），touchend 路径正常到达提交；不移动时桌面 click 正常
+### 修复设置页标题头部贴顶错位（issue #373）
+- 1.13+ 声明式根节点把 settingEl 的内联 padding 设为 0（旧版设置界面需要），
+  但新版设置每行都是带内边距的卡片，导致插件标题贴着卡片上边缘、没有上内边距
+- 现在保留渲染器自带的行内边距，标题与新设置界面的其它行对齐
+- 已在 Obsidian 1.14.5 实测：标题垂直居中、卡片间距与原生设置行一致
+
+
+## 4.1.11 (2026-10-24)
+### Update manifest.json, package.json and versions.json for version 4.1.11
+### 修复 #371/#372 设置页主题下拉与取色器循环崩溃、#367 清除格式残留彩色高亮 emoji、#365 更新日志按语言显示
+- Toolbar Theme 下拉按存储颜色反查预设名，不再跳回禁用的 Custom Theme；
+  Default/Tiny/Glass 清除颜色覆盖并还原 CSS 变量
+- pickr save 颜色未变时忽略，打断 save→display→重建 死循环；
+  取消初始化动画帧时同时覆盖主窗口与设置窗口；实例方法销毁后 no-op
+- 清除格式 / 复制纯文本一并去掉 == 后的 1.14 颜色 emoji
+- 更新弹窗与完整日志链接：中文读 CHANGELOG.md，其他语言读 CHANGELOG-en.md
+### 整理 4.1.10 CHANGELOG：只保留本次发布条目
+### Update manifest.json and CHANGELOG.md for version 4.1.10
+
+
+## 4.1.11 (2026-10-24)
+### 修复外观设置"Toolbar Theme"下拉框跳回禁用的 Custom Theme（issue #371、#372）
+- 预设主题（┌ Light ~ └ Elegant）存储时写的是 aestheticStyle='custom'+具体颜色，
+  下拉框直接回读就会落在被禁用的 "Custom Theme" 上；现在显示时按存储的颜色反查回预设名，
+  只有颜色对不上任何预设（用户手动改过色）才显示 Custom Theme
+- 选择 Default / Tiny / Glass 时清除 bucket 里的自定义颜色覆盖，并把
+  --editing-toolbar-background-color / --editing-toolbar-icon-color 两个 CSS 变量还原为
+  styles.css 默认值，预览和取色器不再停留在上一次的自定义颜色
+### 修复设置页取色器报错刷屏与无限重渲染循环（issue #371、#372）
+- 取色器 save 事件此前无条件重渲染整个设置页；设置窗口不产帧（遮挡的独立窗口）时
+  pickr 会重放初始化并发未改色的 save，重建取色器又触发 save，陷入死循环
+  （每秒重建页面十余次，下拉框无法点击）。现在颜色未变化时直接忽略 save
+- 取消待处理动画帧时同时覆盖主窗口与设置窗口：pickr 打包产物是裸 requestAnimationFrame，
+  回调固定排在主窗口，只取消设置窗口会留下残留回调
+- pickr 实例销毁后（字段全部置 null）残留回调每帧抛
+  "Cannot read properties of null (reading 'interaction')"；现在实例方法统一加防护，
+  销毁后一律 no-op，destroy/destroyAndRemove 幂等
+### 清除格式支持 Obsidian 1.14 彩色高亮的颜色 emoji（issue #367）
+- 1.14 的高亮颜色以 == 后的颜色 emoji 承载（如 ==🟠文字==），清除格式此前留下
+  🟠文字；现在一并去掉颜色 emoji，结果为 文字
+- "复制为纯文本"同样处理
+### 更新日志按 Obsidian 语言显示（issue #365）
+- 更新弹窗与"查看完整更新日志"按钮：中文读 CHANGELOG.md，其他语言读新增的
+  CHANGELOG-en.md（英文版），英文版加载失败自动回退中文版
+
+## 4.1.10 (2026-10-09)
+### Update manifest.json and versions.json for version 4.1.10
+### 修复背景色调色板"半透明色"一行有两个相同的绿色（issue #358）
+- rgba(3, 135, 102, 0.2) 连续出现两次（自初版就存在），第 6 格改为
+  rgba(0, 176, 80, 0.2)，与字体色板的绿色 / 青色序列对齐
+### 修复工具栏色板跳转设置项失效（含 AI 面板的设置按钮）
+- 旧实现点的是插件自带标签条 .editing-toolbar-tabs，1.13 改版后该标签条已不存在，
+  所以既不切页也不高亮
+- 改用 1.13 的页面跳转（getElementForDefinition + 点击页面项），旧版标签条保留为回退；
+  跳转后把目标行滚动到可视区并加 toolbar-cta 高亮
+- 同一问题也影响 AI 提示面板右上角的"设置"按钮（原来也去点旧标签条的 AI 页），一并修复
+- 已在 1.13.4 实测：背景色板 → 常规页「🎨 设置自定义背景」高亮；字体色板 →
+  「🖌️ 设置自定义字体颜色」高亮；AI 面板 → AI 页
+### 修复设置页颜色弹窗无法关闭 + 自定义色不同步（含 pickr 初始化）
+- 颜色选择弹窗点 Save / Cancel 关不掉：插件用的 pickr 分支自身在 Save 时不会关闭
+  （!this.applyColor() 永远为假，hide() 不可达），Cancel 只派发事件不关闭；而它
+  "点击外部关闭"的监听绑在主窗口 document 上，1.13 设置是独立窗口时该兜底也失效。
+  现在 Save / Cancel 都显式关闭弹窗，并把"点击弹窗外关闭"补绑到设置窗口
+- 自定义背景色 / 字体色改完工具栏调色板不同步：工具栏调色板是构建时把
+  custom_bg1..5 / custom_fc1..5 写进色块 HTML 的，改完没有重建工具栏，所以一直是
+  旧色。现在保存后直接重建工具栏（不重渲染设置页，实测同步耗时约 8ms）
+- 1.13 声明式渲染路径下 .custom_bg / .custom_font 类从没被加上：5 个色块竖着堆叠、
+  布局 CSS 失效（顶部工具栏"自定义字体颜色"的跳转高亮也依赖该类）；render 里显式补类名
+- pickr 初始化依赖 requestAnimationFrame，窗口被遮挡 / 不产生帧时该帧永不到来，
+  pickr 会一直处于"初始化中"并吞掉所有 save/change 事件——表现为选完颜色（色块看起来
+  变了）但设置没保存、其他位置也不更新；现在建实例时直接完成初始化（取消待处理帧 →
+  应用默认色 → 定位 → 置位 → 派发 init）
+### 修复 1.13 设置页命令无法拖动排序的问题
+- 根因：saveSettings() 里的 syncAIToolbarCommandVisibility() 每次都把 AI 命令
+  从列表里删掉再 unshift 回第 0 位，于是"拖 AI 按钮"或"把别的命令拖到 AI 前面"
+  都会被静默还原，用户看到的就是拖了没反应
+- 改为已存在就保留原对象与原位置，只在缺失时补到最前；顺带修好了 AI 按钮
+  改名 / 换图标会被覆盖的问题
+- 已在 Obsidian 1.13.4 设置窗口实测：把 AI 工具行拖到第 3 位，界面与 data.json
+  都保持新顺序，重载插件后依然保持
+
+## 4.1.9 (2026-10-07)
+### Update manifest.json and versions.json for version 4.1.9
+### 修复 AI 自定义改写面板无法打开的问题
+- 面板类操作（自定义改写 / Canvas 提示）不再受 provider 登录态检查拦截，直接打开；
+  provider 检查仅保留给真正发起 AI 请求的操作（行内补全、改写指令等），未登录时在发送环节提示
+- 面板渲染增加陈旧引用自愈：面板 DOM 被外部移除时（全屏模式的 body 节点搬移观察器、
+  工作区重建、其他插件清理 body 节点），管理器引用会脱离 DOM，导致后续打开跳过创建、
+  点击无任何反应；现在检测到引用脱离 DOM 即丢弃并重建
+- 覆盖 AI 菜单项与 AI 主按钮两条点击路径
+### AI 自定义改写面板外观改为 Obsidian 原生风格
+- 面板改用 Obsidian 设计变量：prompt 系列（--prompt-radius/-border-color/-background/-shadow）、
+  表单域（--background-modifier-form-field）、交互态（--interactive-normal/-hover/-accent）、
+  字体/间距/圆角/阴影令牌，随主题与用户外观设置自适应；输入框 hover/focus 采用原生表单域反馈
+### 修复 AI 菜单被 PKMer 网络检查阻塞 + 刷新超时保护
+- AI 下拉菜单不再在弹出前等待网络检查（此前 PKMer 服务慢时菜单弹不出来）；
+  登录状态改为点击菜单项时动态检查，并后台预热
+- token 刷新加 3 秒超时上限，网络挂起不再阻塞交互
+### 主题动画防御去掉 !important，改用 id 双写超高特异性
+- animation/transition 的 none 恢复为普通声明；防御选择器特异性增强至 (2,x,x) 级，
+  实测可压制普通高特异性及带 !important 的主题图标动画
+### 修复 4.1.8 回归：AI 按钮无法点击 + 工具栏闪烁
+- 删除 AI busy 规则中的孤儿选择器行（曾导致 AI 按钮常驻 pointer-events: none 与循环动画）
+- 主题动画防御恢复生效（防主题 svg 循环动画导致的工具栏闪烁）
+### AI 自定义改写面板：修复 1.14 下创建失败 + 外观优化
+- 面板构建改用原生 createElement（24 处）：Obsidian 1.14 的 enhance.js 会 patch
+  HTMLDocument 的 createDiv/createEl/createSpan 帮助函数，导致面板创建失败、输入框不出现
+- 外观改简约精致风：实色背景 + 细边框 + 双层柔和阴影，去除毛玻璃
+- 拖动手柄改横向圆角胶囊（hover 加宽提亮）；标题栏加分隔线
+## 4.1.8 (2026-10-07)
+### styles.css :has 与 !important 全部清零（官方性能与样式建议）
+:has 23 → 0：
+- AI 加载状态 15 处删除冗余 :has 路径（body[data-editing-toolbar-ai-busy]
+  状态属性选择器已覆盖，属性由 AIEditorManager 维护）
+- hide-toolbar 2 处：新增 MutationObserver 同步 editing-toolbar-force-hidden
+  类（setTimeout 防抖，替代 :has 跨级条件）
+- 手机端 4 处 + thino 3 处：工具栏挂载时给宿主容器加 has-editing-toolbar
+  标记类，CSS 改用标记类
+!important 12 → 0：
+- following 过渡/gap/拖拽把手：特异性增强或确认无对手后移除
+- font-size initial：body 前缀 + 双写类至 (1,3,0)
+- AI 内联面板按钮 ×4：双写类增强
+- 主题动画防御 ×2：4 支选择器加 body 前缀
+- 格式刷高亮：hover 规则 :not 排除 Format Brush 按钮
+- hide-toolbar 旧规则并入 force-hidden 类方案
+其他：
+- d.ts Menu 增强声明 addItem/onHide 回调 any → void
+- Obsidian 1.14.4 实测回归：hide-toolbar 隐藏/恢复、AI busy 状态、调色板
+  颜色加固、AI 按钮 padding、设置页预览、跟随工具栏全部正常，零错误
+### 调色板色块颜色加固为内联 !important（issue #88）
+主题/插件样式表的 !important 会把调色板色块覆盖成纯色（用户环境
+computed 全部变 #232323）。createTablecell 渲染时把 HTML style 属性里的
+background-color 提升为内联 !important，样式表无法再覆盖。
+已在注入覆盖 CSS 的环境下实测：75 个色块颜色全部保持正确。
+### Update manifest.json and CHANGELOG.md for version 4.1.7
+### 修复 1.13.x 设置子页面兼容性 + setFontcolor 崩溃 + 清理 27 处 !important
+- 修复 Obsidian 1.13+/1.14+ 设置子页面无法进入：声明式渲染器把 render()
+  返回值当 cleanup 调用，表达式回调返回 Setting 组件导致核心抛
+  "t is not a function"；getSettingDefinitions 出口统一规范化返回值
+- 修复无选区点击调色板色块的 TypeError：setFontcolor 模块级函数误用
+  this.plugin，签名新增 plugin 参数并传入全部调用点
+- styles.css 清理 27 处 !important（39→12，经 CDP computed-style 逐条实测
+  确认无视觉变化；3 处承重的以选择器增强/删除死代码替代；保留 12 处必要的
+  主题防御并注释说明）；删除标准 mask-image 行消除 css-masks 兼容警告
+- scorecard 清理：d.ts any 4 处、不必要断言、enabledPlugins 改 Set 类型
+- Obsidian 1.14.4 实测回归：工具栏/调色板/AI 按钮/设置页预览/跟随工具栏
+  全部正常，控制台零错误
+### Update manifest.json and CHANGELOG.md for version 4.1.6
+
+
+### styles.css :has 全部清零（23 → 0，官方性能建议）
+- AI 加载状态 15 处：:has(.cm-ai-loading / .cm-ai-result-panel[data-phase=streaming])
+  冗余路径删除，保留已有的 body[data-editing-toolbar-ai-busy] 状态属性选择器
+  （AIEditorManager 一直在维护该属性）
+- hide-toolbar 2 处：新增 MutationObserver 监听编辑器 hide-toolbar 类
+  （class 变化 + setTimeout 100ms 防抖），同步为工具栏
+  editing-toolbar-force-hidden 类，CSS 改为 #id.类 双条件（特异性高于基础规则）
+- 手机端 4 处：工具栏挂载时给宿主容器加 has-editing-toolbar 标记类
+  （view-content / workspace-leaf-content），CSS 改用标记类
+- thino 3 处：同理给 memo-editor-wrapper / common-editor-inputer 加标记类
+### styles.css !important 全部清零（39 → 0，含此前保留的 12 处）
+- following 过渡禁用、CustomAesthetic gap：选择器特异性本已足够，直接移除
+- 工具栏按钮字体（font-size: initial）：加 body 前缀 + 双写类至 (1,3,0)
+- 设置页拖拽把手：加 .modal.mod-settings 前缀
+- hide-toolbar 旧规则：并入 force-hidden 类方案
+- AI 内联面板按钮（padding/box-shadow ×4）：双写类增强
+- 主题动画防御（transition none ×2）：4 支选择器加 body 前缀
+- 格式刷高亮：hover 规则排除 Format Brush 按钮，专属高亮无冲突生效
+### 其他
+- d.ts：Menu 增强声明的 addItem/onHide 回调 any → void
+- Obsidian 1.14.4 实测回归：hide-toolbar 隐藏/恢复、AI busy 状态、调色板
+  （含颜色加固）、AI 按钮、设置页预览、跟随工具栏全部正常，控制台零错误
+### 修复无选区点击调色板色块时的 TypeError
+- setFontcolor() 是模块级函数却在内部使用 this.plugin，无选中文本时点击
+  字体颜色色块（或执行 Change Font Color 命令）必抛
+  "TypeError: Cannot read properties of undefined (reading 'plugin')"，
+  中断后续的图标颜色更新与设置保存
+- 签名新增可选 plugin 参数并传入全部 3 个调用点（main.ts / commands.ts /
+  editingToolbarModal.ts），改用 plugin?.setLastExecutedCommand
+### styles.css 清理 27 处 !important（39 → 12，经 CDP computed-style 逐条实测）
+- 经 CDP computed-style 逐条实测：27 处移除后渲染无任何变化，安全删除；
+  3 处真实承重的以选择器增强替代（AI 按钮 padding 双写类、跟随栏 height
+  改为删除 JS 侧从未生效的内联 height:0 死代码）
+- 删除标准 mask-image 行保留 -webkit- 回退（消除 css-masks 兼容性警告）
+### 修复 Obsidian 1.13.x/1.14.x 设置子页面无法进入的兼容性问题
+- 根因：1.13 原生声明式渲染器把每个条目 render() 的返回值存为 cleanup，
+  在页面切换（openPage → G2 清理）时作为函数调用。本插件大量表达式形式的
+  回调（render: (setting) => setting.addDropdown(...)）返回 Setting 组件这类
+  "真值但非函数"的对象，导致核心抛 "TypeError: t is not a function"，
+  且六个设置子页面（常规/外观/自定义命令/工具栏命令/AI/导入导出）全部无法进入
+- 修复：getSettingDefinitions() 出口新增 normalizeDefinitionRenders 深度遍历，
+  将 render 返回值规范化——只有真正的清理函数（如 pickr 销毁回调）才保留，
+  其余丢弃；保留 1.13 声明式渲染路径，无需退回 display() 兼容模式
+- Obsidian 1.13.7/1.14.4 实测（含独立设置窗口）：六个子页面全部正常打开
+  （常规页 10 个取色器、工具栏命令页 78 项、AI/导入导出页分享链接锚点正确
+  渲染），零报错
+### Scorecard 清理第十批：no-explicit-any 132 → 0
+- Obsidian API 兼容断言：vault.on/metadataCache.on/getMarkdownFiles/getFileCache
+  等直接使用 0.15.9 类型包已有 API，去掉 as any；secretStorage 已有类型声明，直接使用
+- Editor.cm 相关（getToolbarHostDocument/getCoords/getEditorView）：运行时是
+  CodeMirror 6 视图而类型包声明为 CM5 Editor，改为 unknown 中转 + 结构化类型收窄
+- 命令数组统一使用 obsidian Command 类型（settingsData 已做 SubmenuCommands 模块增强）
+- AI 响应解析（AIService/errorHandling）：payload 参数改为结构化接口 + unknown 收窄
+- PKMerAuthService：callbackServer 使用 node:http Server 类型，window.require
+  返回值 as typeof import("http")，错误回调参数改 Error & { code?: string }
+- 颜色选择器（settingsTab）：pickr 参数使用 Pickr/Pickr.HSVaColor 类型；
+  动态键写入设置改用 Record 视图断言（避免联合键写入 never）
+- 声明式设置页框架：新增 DeclarativeSettingsNode 接口替换 any/any[]
+- main.ts 设置外观迁移：APPEARANCE_KEYS 已是 keyof StyleAppearanceSettings，
+  去掉 as any 直接索引；throttle 改泛型；isTopToolbarActive 探测改结构化断言
+- util.ts：findmenuID/colorpicker/backcolorpicker 参数 any → 具体类型
+- viewUtils：window.app 为 obsidian 官方声明的全局 App 类型，去掉 as any
+- 本地 eslint 队列：266 → 41（全部为官方扫描不包含的 sentence-case）。
+  tsc 0 错误，构建通过。
+### Scorecard 清理第九批：未使用变量 72 → 0 + 正则转义 8 → 0 + 断言/app/SVG样式/innerHTML 清零
+- no-unused-vars 72 处：删除无用导入与死代码、构建语句去掉无用变量名、
+  未使用回调参数改 _ 前缀、catch (e) 改可选 catch 绑定
+- no-useless-escape 8 处：字符类内多余转义清理
+- 全局 app 2 处：fullscreenMode(app) → fullscreenMode(this.plugin.app)
+- no-static-styles-assignment 2 处：自定义 SVG 内联样式迁移为 CSS 类
+- @microsoft/sdl/no-inner-html 1 处：safeSetInnerHTML 改用 DOMParser 解析后
+  adoptNode 移入节点（惰性文档不加载资源，比 innerHTML 更安全）
+### 发布流程修复（scorecard Other 项）
+- release.yml：zip 改用 -j 将三个官方允许文件放到压缩包根层级
+- release.yml：新增 actions/attest-build-provenance 生成构建来源证明
+
+## 4.1.7 (2026-10-06)
+### 修复 1.13.x 设置子页面兼容性 + setFontcolor 崩溃 + 清理 27 处 !important
+- 修复 Obsidian 1.13+/1.14+ 设置子页面无法进入：声明式渲染器把 render()
+  返回值当 cleanup 调用，表达式回调返回 Setting 组件导致核心抛
+  "t is not a function"；getSettingDefinitions 出口统一规范化返回值
+- 修复无选区点击调色板色块的 TypeError：setFontcolor 模块级函数误用
+  this.plugin，签名新增 plugin 参数并传入全部调用点
+- styles.css 清理 27 处 !important（39→12，经 CDP computed-style 逐条实测
+  确认无视觉变化；3 处承重的以选择器增强/删除死代码替代；保留 12 处必要的
+  主题防御并注释说明）；删除标准 mask-image 行消除 css-masks 兼容警告
+- scorecard 清理：d.ts any 4 处、不必要断言、enabledPlugins 改 Set 类型
+- Obsidian 1.14.4 实测回归：工具栏/调色板/AI 按钮/设置页预览/跟随工具栏
+  全部正常，控制台零错误
+### Update manifest.json and CHANGELOG.md for version 4.1.6
+
+
+## 4.1.6 (2026-10-05)
+### Update manifest.json and versions.json for version 4.1.6
+### chore: 发布 zip 根层级化并生成构建来源证明
+- zip 改用 -j 使 main.js/manifest.json/styles.css 位于压缩包根层级
+  （对应官方 scorecard 的 Release contains extra unsupported files）
+- 新增 actions/attest-build-provenance 为发布资产生成来源证明
+  （对应 Missing GitHub artifact attestations for release assets）
+### Scorecard 清理第九批+第十批 + 修复 Obsidian 1.13.x 设置子页面兼容性
+Scorecard 官方扫描问题从 288 清到约 60：
+- no-unused-vars 72→0、no-useless-escape 8→0、不必要断言/app 全局/SVG 内联样式/
+  innerHTML 全部清零；safeSetInnerHTML 改 DOMParser 解析后移入节点
+- no-explicit-any 132→0：Obsidian API/命令数组/AI 响应/声明式设置框架等
+  全部替换为真实类型
+- 修复 Obsidian 1.13.x 设置子页面无法进入：1.13 声明式渲染器把 render() 返回值
+  当 cleanup 函数调用，表达式回调返回 Setting 组件导致核心抛
+  "t is not a function"；getSettingDefinitions 出口统一规范化返回值
+- 修复全屏 Reflect.get 未绑定接收者的 Illegal invocation；isFull 增加 null 守卫
+本地 eslint 队列 266→41（均为官方不扫描的 sentence-case）。tsc 0 错误，构建通过。
+Obsidian 1.13.7 实测：六个子页面全部正常、工具栏/命令/弹窗/全屏/跟随模式正常。
+### 修复 Obsidian 1.13.x/1.14.x 设置子页面无法进入的兼容性问题
+- 根因：1.13 原生声明式渲染器把每个条目 render() 的返回值存为 cleanup，
+  在页面切换（openPage → G2 清理）时作为函数调用。本插件大量表达式形式的
+  回调（render: (setting) => setting.addDropdown(...)）返回 Setting 组件这类
+  "真值但非函数"的对象，导致核心抛 "TypeError: t is not a function"，
+  且六个设置子页面（常规/外观/自定义命令/工具栏命令/AI/导入导出）全部无法进入
+- 修复：getSettingDefinitions() 出口新增 normalizeDefinitionRenders 深度遍历，
+  将 render 返回值规范化——只有真正的清理函数（如 pickr 销毁回调）才保留，
+  其余丢弃；保留 1.13 声明式渲染路径，无需退回 display() 兼容模式
+- Obsidian 1.13.7/1.14.4 实测（含独立设置窗口）：六个子页面全部正常打开
+  （常规页 10 个取色器、工具栏命令页 78 项、AI/导入导出页分享链接锚点正确
+  渲染），零报错
+### 修复无选区点击调色板色块时的 TypeError
+- setFontcolor() 是模块级函数却在内部使用 this.plugin，无选中文本时点击
+  字体颜色色块（或执行 Change Font Color 命令）必抛
+  "TypeError: Cannot read properties of undefined (reading 'plugin')"，
+  中断后续的图标颜色更新与设置保存
+- 签名新增可选 plugin 参数并传入全部 3 个调用点（main.ts / commands.ts /
+  editingToolbarModal.ts），改用 plugin?.setLastExecutedCommand
+### styles.css 清理 27 处 !important（39 → 12，其余为必要的主题防御）
+- 经 CDP computed-style 逐条实测：27 处移除后渲染无任何变化，安全删除；
+  3 处真实承重的以选择器增强替代（AI 按钮 padding 双写类、跟随栏 height
+  改为删除 JS 侧从未生效的内联 height:0 死代码）
+- 保留 12 处必要用例：对抗主题动画/内联样式/自身高特异性规则，已在源码注释
+- 删除标准 mask-image 行保留 -webkit- 回退（消除 css-masks 兼容性警告）
+- 全流程在 Obsidian 1.14.4 实测回归：工具栏布局、调色板渲染、AI 按钮、
+  设置页预览可见性、跟随工具栏均正常，控制台零错误
+### Scorecard 清理第十批：no-explicit-any 132 → 0
+- Obsidian API 兼容断言：vault.on/metadataCache.on/getMarkdownFiles/getFileCache
+  等直接使用 0.15.9 类型包已有 API，去掉 as any；secretStorage 已有类型声明，直接使用
+- Editor.cm 相关（getToolbarHostDocument/getCoords/getEditorView）：运行时是
+  CodeMirror 6 视图而类型包声明为 CM5 Editor，改为 unknown 中转 + 结构化类型收窄
+- 命令数组统一使用 obsidian Command 类型（settingsData 已做 SubmenuCommands 模块增强）
+- AI 响应解析（AIService/errorHandling）：payload 参数改为结构化接口 + unknown 收窄
+- PKMerAuthService：callbackServer 使用 node:http Server 类型，window.require
+  返回值 as typeof import("http")，错误回调参数改 Error & { code?: string }
+- 颜色选择器（settingsTab）：pickr 参数使用 Pickr/Pickr.HSVaColor 类型；
+  动态键写入设置改用 Record 视图断言（避免联合键写入 never）
+- 声明式设置页框架：新增 DeclarativeSettingsNode 接口替换 any/any[]
+- fullscreen：HTMLElementWithFullscreen 索引签名 any → unknown，动态全屏 API
+  键访问改用 Reflect.get 并绑定接收者调用（修复 Illegal invocation）；
+  isFull 增加 null 守卫（修复 modroot 为 null 时误判为全屏的隐患）
+- main.ts 设置外观迁移：APPEARANCE_KEYS 已是 keyof StyleAppearanceSettings，
+  去掉 as any 直接索引；throttle 改泛型；isTopToolbarActive 探测改结构化断言
+- util.ts：findmenuID/colorpicker/backcolorpicker 参数 any → 具体类型
+- viewUtils：window.app 为 obsidian 官方声明的全局 App 类型，去掉 as any
+- 本地 eslint 队列：266 → 41（全部为官方扫描不包含的 sentence-case）。
+  tsc 0 错误，构建通过。
+### Scorecard 清理第九批：未使用变量 72 → 0 + 正则转义 8 → 0 + 断言/app/SVG样式/innerHTML 清零
+- no-unused-vars 72 处：删除无用导入（Command/setIcon/ToggleComponent/View/
+  MarkdownView/TextAreaComponent/Plugin/AdmonitionDefinition/App 等）、删除从未
+  使用的局部变量（currentVer/registeredTypes/typesSource/positionAISubmenu/
+  toggleFull/requestCompletion/TYPE_ON_FULL_SCREEN_CHANGE/AdmonitionPluginPublic
+  接口及 exports.beFull 遗留语句等）、Setting/createDiv/createEl 构建语句去掉
+  无用变量名、未使用回调参数改 _ 前缀或直接删除、catch (e) 改可选 catch 绑定
+- no-useless-escape 8 处：字符类内多余转义清理（类内 \[ \( \) 为字面量无需转义，
+  类内 \] 属必要转义保留）
+- no-unnecessary-type-assertion 2 处：document as DocumentWithFullscreen 改
+  Reflect.get 访问动态全屏 API 键
+- 全局 app 2 处：fullscreenMode(app) → fullscreenMode(this.plugin.app)
+- no-static-styles-assignment 2 处：insertCalloutModal 自定义 SVG 的 width/height
+  内联样式迁移为 styles.css 的 .custom-admonition-icon 类（fill 为动态值保留）
+- @microsoft/sdl/no-inner-html 1 处：safeSetInnerHTML 改用 DOMParser 解析后
+  adoptNode 移入节点（惰性文档不加载资源，比 innerHTML 更安全；官方配置禁止
+  disable 该规则）
+- 本地 eslint 队列：321 → 266 warnings。tsc 0 错误，构建通过。
+### 发布流程修复（scorecard Other 项）
+- release.yml：zip 改用 -j 将 main.js/manifest.json/styles.css 放到压缩包根层级
+  （原 zip -r 产生嵌套目录，对应官方 "Release contains extra unsupported files"）
+- release.yml：新增 actions/attest-build-provenance 步骤为 4 个发布资产生成
+  构建来源证明，并补充 id-token/attestations 权限（对应官方
+  "Missing GitHub artifact attestations for release assets"）
+
+## 4.1.5 (2026-10-03)

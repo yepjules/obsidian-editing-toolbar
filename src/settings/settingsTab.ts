@@ -1,13 +1,13 @@
 import type editingToolbarPlugin from "src/plugin/main";
 import { CommandPicker, ChooseFromIconList, openSlider, ChangeCmdname } from "src/modals/suggesterModals";
-import { App, Setting, PluginSettingTab, Command, Notice, setIcon } from "obsidian";
+import { App, Setting, PluginSettingTab, Command, Notice, setIcon, DropdownComponent } from "obsidian";
 import { APPEND_METHODS, AESTHETIC_STYLES, POSITION_STYLES } from "src/settings/settingsData";
-import type { ToolbarStyleKey, StyleAppearanceSettings, AppearanceByStyle } from "src/settings/settingsData";
+import type { ToolbarStyleKey, StyleAppearanceSettings } from "src/settings/settingsData";
 import { selfDestruct, editingToolbarPopover, checkHtml } from "src/modals/editingToolbarModal";
 import Sortable from "sortablejs";
 import { debounce } from "obsidian";
 import { Modal } from "obsidian";
-import { GenNonDuplicateID } from "src/util/util";
+import { GenNonDuplicateID, safeSetInnerHTML } from "src/util/util";
 import { t } from 'src/translations/helper';
 import { ToolbarCommand } from './ToolbarSettings';
 import { UpdateNoticeModal } from "src/modals/updateModal";
@@ -19,8 +19,9 @@ import { ImportExportModal } from "src/modals/ImportExportModal";
 import { RegexCommandModal } from "src/modals/RegexCommandModal";
 import { ButtonComponent } from "obsidian";
 import { ConfirmModal } from "src/modals/ConfirmModal";
-import { PKMER_MODEL_OPTIONS, resolvePKMerModelForScene } from "src/ai/types";
-import type { CustomModelApiFormat } from "src/ai/types";
+import { createDefaultFrontmatterPromptSettings, getDefaultCustomPromptTemplates, PKMER_MODEL_OPTIONS, resolvePKMerModelForScene } from "src/ai/types";
+import type { CustomModelApiFormat, CustomPromptTemplate } from "src/ai/types";
+import { AIUrlHelper } from "src/ai/urlValidation";
 import { getAIErrorMessage } from "src/ai/errorHandling";
 import { getPKMerAIEntryUrl, getPKMerAIQuotaUrl } from "src/ai/pkmerWeb";
 // 添加类型定义
@@ -35,6 +36,12 @@ interface SettingTab {
   id: string;
   name: string;
   icon: string;
+}
+
+interface CommandDragState {
+  command: Command;
+  source: Command[];
+  sourceEl: HTMLElement;
 }
 
 // 定义设置标签页
@@ -104,26 +111,112 @@ export function getPickrSettings(opts: {
     },
   };
 }
-export function getComandindex(item: any, arr: any[]): number {
+const TOOLBAR_STYLE_KEYS: readonly ToolbarStyleKey[] = ["top", "following", "fixed", "mobile"];
+
+function toToolbarStyleKey(value: string | null | undefined): ToolbarStyleKey | null {
+  if (!value) return null;
+  return (TOOLBAR_STYLE_KEYS as readonly string[]).includes(value) ? (value as ToolbarStyleKey) : null;
+}
+
+interface DeclarativeSettingsNode {
+  type?: string;
+  name?: string;
+  aliases?: string[];
+  desc?: string;
+  heading?: string;
+  cls?: string;
+  items?: DeclarativeSettingsNode[];
+  render?: (setting: Setting) => unknown;
+  [key: string]: unknown;
+}
+
+export function getComandindex(item: string, arr: Command[]): number {
   if (!arr || !Array.isArray(arr)) {
     return -1;
   }
   const idx = arr.findIndex((el) => el?.id === item);
   return idx;
 }
+
+// 色卡预设（┌ Light ~ └ Elegant）：应用后存储为 aestheticStyle='custom' + 具体颜色，
+// 下拉框显示时靠这里的颜色反查回预设名
+const TOOLBAR_COLOR_PRESETS: Record<string, [string, string, number]> = {
+  light: ['#F5F8FA', '#4A5568', 18],
+  dark: ['#2D3033', '#E2E8F0', 18],
+  vibrant: ['#7E57C2', '#FFFFFF', 20],
+  minimal: ['#F8F9FA', '#6B7280', 16],
+  elegant: ['#1A2F28', '#D4AF37', 19],
+};
+
+export function moveItemBetweenLists<T>(
+  source: T[],
+  target: T[],
+  item: T,
+  targetIndex: number
+): boolean {
+  const sourceIndex = source.indexOf(item);
+  if (sourceIndex < 0) return false;
+
+  let insertIndex = Math.max(0, Math.min(targetIndex, target.length));
+  if (source === target && sourceIndex < insertIndex) {
+    insertIndex -= 1;
+  }
+  if (source === target && sourceIndex === insertIndex) return false;
+
+  source.splice(sourceIndex, 1);
+  target.splice(insertIndex, 0, item);
+  return true;
+}
+
 export class editingToolbarSettingTab extends PluginSettingTab {
   plugin: editingToolbarPlugin;
   appendMethod: string;
   pickrs: Pickr[] = [];
+  private pickrDismissListeners = new Map<Document, { mousedown: (event: MouseEvent) => void }>();
+  private sortables: Sortable[] = [];
   activeTab: string = 'general';
   private cachedCustomOllamaModels: string[] = [];
   private cachedCustomOllamaModelsBaseUrl = '';
   private cachedCustomOllamaModelsError = '';
+  private cachedCustomOpenAIModels: string[] = [];
+  private cachedCustomOpenAIModelsBaseUrl = '';
+  private cachedCustomOpenAIModelsError = '';
+  private cachedCustomGeminiModels: string[] = [];
+  private cachedCustomGeminiModelsBaseUrl = '';
+  private cachedCustomGeminiModelsError = '';
+  private commandDragState: CommandDragState | null = null;
+  private commandSettingsPageDefinition: DeclarativeSettingsNode | null = null;
+  private generalSettingsPageDefinition: DeclarativeSettingsNode | null = null;
+  private aiSettingsPageDefinition: DeclarativeSettingsNode | null = null;
+  private selectedImportSourceStyle = 'Main menu';
+  private commandDragControllers = new WeakMap<HTMLElement, AbortController>();
+  private commandDropControllers = new WeakMap<HTMLElement, AbortController>();
+  private declarativeCommandCleanups = new WeakMap<HTMLElement, () => void>();
+  private declarativeSubmenuCleanups = new WeakMap<HTMLElement, () => void>();
+  private declarativeSubmenuContainers = new WeakMap<object, HTMLElement>();
+  private commandEventControllers = new Set<AbortController>();
   // 添加一个属性来跟踪当前正在编辑的配置
   private currentEditingConfig: string;
 
   private getLocalizedCommandName(name: string): string {
-    return t(name as any);
+    return t(name);
+  }
+
+  private setDeclarativeCommandName(
+    setting: Setting,
+    displayName: string,
+    keySuffix: string,
+  ): void {
+    // Obsidian derives a setting key from the name supplied to setName().
+    // Keep that key unique while preserving the compact command label shown
+    // to users (multiple submenus commonly share the name "submenu").
+    setting.setName(`Editing Toolbar Command ${keySuffix}`);
+    setting.nameEl.setText(displayName);
+  }
+
+  private getCommandSettingKey(command: Command, index: number, parentId?: string): string {
+    const prefix = parentId ? `${parentId}-${command.id}` : command.id;
+    return command.id === 'editingToolbar-Divider-Line' ? `${prefix}-${index}` : prefix;
   }
   constructor(app: App, plugin: editingToolbarPlugin) {
     super(app, plugin);
@@ -131,11 +224,595 @@ export class editingToolbarSettingTab extends PluginSettingTab {
     // 初始化 currentEditingConfig
     this.currentEditingConfig = this.plugin.settings.positionStyle;
 
-    addEventListener("editingToolbar-NewCommand", () => {
+    const handleNewCommand = () => {
       selfDestruct(this.plugin);
       editingToolbarPopover(app, this.plugin);
-      this.display();
+      // 只有设置页真正打开时才重建 UI。插件启动阶段也会注册这个监听器，
+      // 无条件 display() 会在 Obsidian 1.15.x 的启动揭示窗口里重建设置页，
+      // 造成可见的启动布局抖动（issue #376）。
+      if (this.containerEl?.isShown()) {
+        this.display();
+      }
+    };
+    window.addEventListener("editingToolbar-NewCommand", handleNewCommand);
+    this.plugin.register(() => window.removeEventListener("editingToolbar-NewCommand", handleNewCommand));
+  }
+
+  /**
+   * Obsidian 1.13+ renders this custom UI through a declarative definition.
+   * display() remains as the fallback for older app versions.
+   */
+  getSettingDefinitions() {
+    this.commandSettingsPageDefinition = {
+      type: 'page',
+      name: t('Toolbar Commands'),
+      items: this.createDeclarativeCommandPageDefinitions(),
+    };
+    // Kept so the colour palettes of the live toolbar can jump straight to the
+    // page that holds the custom colour presets.
+    this.generalSettingsPageDefinition = {
+      type: 'page',
+      name: t('General'),
+      aliases: [t('Basic Settings'), t('Toolbar Enablement')],
+      items: this.createDeclarativeGeneralPageDefinitions(),
+    };
+    this.aiSettingsPageDefinition = this.createDeclarativeCustomContentPage(
+      t('AI'),
+      [t('Artificial Intelligence'), t('Models'), t('Completion')],
+      (container) => this.displayAISettings(container),
+    );
+
+    const pages = [
+        this.generalSettingsPageDefinition,
+        {
+          type: 'page',
+          name: t('Appearance'),
+          aliases: [t('Toolbar Appearance'), t('Colors'), t('Icon Size')],
+          items: this.createDeclarativeAppearancePageDefinitions(),
+        },
+        this.createDeclarativeCustomContentPage(
+          t('Custom Commands'),
+          [t('Format Commands'), t('Regex Commands')],
+          (container) => this.displayCustomCommandSettings(container),
+        ),
+        this.commandSettingsPageDefinition,
+        this.aiSettingsPageDefinition,
+        this.createDeclarativeCustomContentPage(
+          t('Import/Export'),
+          [t('Import Configuration'), t('Export Configuration'), t('Backup')],
+          (container) => this.displayImportExportSettings(container),
+        ),
+    ];
+
+    const definitions: DeclarativeSettingsNode[] = [{
+      name: t('Editing Toolbar'),
+      aliases: SETTING_TABS.map((tab) => tab.name),
+      render: (setting: Setting) => {
+        setting.settingEl.empty();
+        setting.settingEl.addClass('editing-toolbar-settings-root');
+        setting.settingEl.setCssStyles({ display: 'block' });
+        // Keep the shell's own row padding: the 1.13+ settings render rows as
+        // padded cards, and with the padding removed the title sat flush against
+        // the top edge (issue #373).
+        this.createHeader(setting.settingEl);
+      },
+    }, {
+      type: 'group',
+      cls: 'editing-toolbar-page-navigation',
+      items: pages,
+    }];
+    this.normalizeDefinitionRenders(definitions);
+    return definitions;
+  }
+
+  /**
+   * Obsidian 1.13 声明式渲染器把 render() 的返回值当作页面切换时的清理函数调用。
+   * 表达式形式的回调（如 render: (setting) => setting.addDropdown(...)）会返回
+   * Setting 组件这类"真值但非函数"的对象，导致核心在 openPage 清理阶段抛出
+   * "TypeError: t is not a function"，且页面永远无法切换。这里统一规范化：
+   * 只有返回函数（真正的清理函数，如 pickr 的销毁回调）才保留。
+   */
+  private normalizeDefinitionRenders(nodes: DeclarativeSettingsNode[]): void {
+    for (const node of nodes) {
+      if (typeof node.render === "function") {
+        const original = node.render;
+        node.render = (setting: Setting) => {
+          const result = original(setting);
+          return typeof result === "function" ? result : undefined;
+        };
+      }
+      if (Array.isArray(node.items)) this.normalizeDefinitionRenders(node.items);
+    }
+  }
+
+  /**
+   * Re-render through the 1.13 settings API when available. Calling display()
+   * directly would bypass the declarative renderer and detach the drag targets.
+   */
+  private refreshSettings(): void {
+    const tab = this as unknown as { update?: () => void };
+    if (typeof tab.update === 'function') {
+      tab.update();
+      return;
+    }
+
+    this.display();
+  }
+
+  private createDeclarativeCustomContentPage(
+    name: string,
+    aliases: string[],
+    renderContent: (container: HTMLElement) => void,
+  ): DeclarativeSettingsNode {
+    return {
+      type: 'page',
+      name,
+      aliases,
+      items: [{
+        name,
+        aliases,
+        render: (setting: Setting) => {
+          setting.settingEl.empty();
+          setting.settingEl.addClass('editing-toolbar-declarative-content');
+          setting.settingEl.setCssStyles({ display: 'block' });
+          setting.settingEl.setCssStyles({ padding: '0' });
+          renderContent(setting.settingEl);
+          return () => this.destroySettingsResources();
+        },
+      }],
+    };
+  }
+
+  private createDeclarativeGeneralPageDefinitions(): DeclarativeSettingsNode[] {
+    return [
+      {
+        name: t('Editing Toolbar Append Method'),
+        aliases: [t('Append Method'), t('Regeneration')],
+        desc: t('Choose where Editing Toolbar will append upon regeneration.'),
+        render: (setting: Setting) => setting.addDropdown((dropdown) => {
+          dropdown.addOptions(Object.fromEntries(APPEND_METHODS.map((method) => [method, t(method)])));
+          dropdown.setValue(this.plugin.settings.appendMethod).onChange(async (value) => {
+            this.plugin.settings.appendMethod = value;
+            await this.plugin.saveSettings();
+          });
+        }),
+      },
+      {
+        name: t('Enable Multiple Configurations'),
+        aliases: [t('Multiple Configurations'), t('Command Configurations')],
+        desc: t('Enable different command configurations for each position style (following, top, fixed).'),
+        render: (setting: Setting) => setting.addToggle((toggle) => toggle
+          .setValue(this.plugin.settings.enableMultipleConfig || false)
+          .onChange(async (value) => {
+            this.plugin.settings.enableMultipleConfig = value;
+            this.plugin.onPositionStyleChange(this.plugin.positionStyle);
+            await this.plugin.saveSettings();
+            this.refreshSettings();
+          })),
+      },
+      {
+        name: t('Top Toolbar'),
+        aliases: [t('Enable Top Toolbar')],
+        desc: t('Enable the toolbar positioned at the top.'),
+        render: (setting: Setting) => this.renderDeclarativeToolbarToggle(setting, 'top'),
+      },
+      {
+        name: t('Following Toolbar'),
+        aliases: [t('Enable Following Toolbar'), t('Selection Toolbar')],
+        desc: t('Enable the toolbar that appears upon text selection.'),
+        render: (setting: Setting) => this.renderDeclarativeToolbarToggle(setting, 'following'),
+      },
+      {
+        name: t('Fixed Toolbar'),
+        aliases: [t('Enable Fixed Toolbar'), t('Floating Toolbar')],
+        desc: t('Enable the toolbar whose position may be fixed where you please.'),
+        render: (setting: Setting) => this.renderDeclarativeToolbarToggle(setting, 'fixed'),
+      },
+      {
+        name: t('Mobile Enabled or Not'),
+        aliases: [t('Mobile Toolbar'), t('Enable on Mobile')],
+        desc: t('Whether to enable on mobile devices with device width less than 768px.'),
+        render: (setting: Setting) => setting.addToggle((toggle) => toggle
+          .setValue(this.plugin.settings.isLoadOnMobile ?? false)
+          .onChange(async (value) => {
+            this.plugin.settings.isLoadOnMobile = value;
+            await this.plugin.saveSettings();
+            this.triggerRefresh();
+            this.refreshSettings();
+          })),
+      },
+      {
+        name: t('🎨 Set Custom Background'),
+        aliases: [t('Custom Background'), t('Background Color Presets')],
+        desc: t('Click on the picker to adjust the color'),
+        render: (setting: Setting) => {
+          setting.setClass('custom_bg');
+          return this.addCustomPalettePickers(
+            setting,
+            'custom_bg',
+            ['#FFB78B8C', '#CDF4698C', '#A0CCF68C', '#F0A7D88C', '#ADEFEF8C'],
+            'background-color',
+          );
+        },
+      },
+      {
+        name: t('🖌️ Set Custom Font Color'),
+        aliases: [t('Custom Font Color'), t('Font Color Presets')],
+        desc: t('Click on the picker to adjust the color'),
+        render: (setting: Setting) => {
+          setting.setClass('custom_font');
+          return this.addCustomPalettePickers(
+            setting,
+            'custom_fc',
+            ['#D83931', '#DE7802', '#245BDB', '#6425D0', '#646A73'],
+            'color',
+          );
+        },
+      },
+    ];
+  }
+
+  private renderDeclarativeToolbarToggle(
+    setting: Setting,
+    style: 'top' | 'following' | 'fixed',
+  ): void {
+    const settings = this.plugin.settings;
+    const enabledByStyle = {
+      top: settings.enableTopToolbar,
+      following: settings.enableFollowingToolbar,
+      fixed: settings.enableFixedToolbar,
+    };
+
+    setting.addToggle((toggle) => toggle
+      .setValue(enabledByStyle[style] || false)
+      .onChange(async (value) => {
+        if (style === 'top') settings.enableTopToolbar = value;
+        if (style === 'following') settings.enableFollowingToolbar = value;
+        if (style === 'fixed') settings.enableFixedToolbar = value;
+
+        const previousStyle = this.plugin.positionStyle;
+        const nextStyle = value
+          ? style
+          : previousStyle === style
+            ? (['top', 'following', 'fixed'] as const).find((candidate) => {
+              if (candidate === 'top') return settings.enableTopToolbar;
+              if (candidate === 'following') return settings.enableFollowingToolbar;
+              return settings.enableFixedToolbar;
+            }) ?? null
+            : null;
+
+        if (nextStyle && nextStyle !== previousStyle) {
+          this.plugin.onPositionStyleChange(nextStyle);
+        }
+        await this.plugin.saveSettings();
+        this.plugin.handleeditingToolbar();
+        this.refreshSettings();
+      }));
+  }
+
+  private createDeclarativeAppearancePageDefinitions(): DeclarativeSettingsNode[] {
+    const editingStyle: ToolbarStyleKey =
+      (this.plugin.appearanceEditStyle) ||
+      (this.plugin.settings.positionStyle as ToolbarStyleKey) || 'top';
+
+    const definitions: DeclarativeSettingsNode[] = [{
+      name: t('Toolbar Settings'),
+      aliases: [t('Appearance Style'), t('Position Style')],
+      desc: t("Choose which toolbar style's appearance you want to edit."),
+      render: (setting: Setting) => setting.addDropdown((dropdown) => {
+        dropdown.addOptions(Object.fromEntries(POSITION_STYLES.map((position) => [position, t(position)])));
+        dropdown.setValue(editingStyle).onChange(async (value) => {
+          this.plugin.appearanceEditStyle = value as ToolbarStyleKey;
+          this.plugin.settings.positionStyle = value;
+          await this.plugin.saveSettings();
+          this.refreshSettings();
+        });
+      }),
+    }];
+
+    if (editingStyle === 'top') {
+      definitions.push({
+        name: t('Editing Toolbar Auto-hide'),
+        aliases: [t('Auto-hide'), t('Hide Toolbar')],
+        desc: t('The toolbar is displayed when the mouse moves over it, otherwise it is automatically hidden'),
+        render: (setting: Setting) => setting.addToggle((toggle) => toggle.setValue(this.plugin.settings.autohide)
+          .onChange(async (value) => {
+            this.plugin.settings.autohide = value;
+            await this.plugin.saveSettings();
+            this.triggerRefresh();
+          })),
+      }, {
+        name: t('Editing Toolbar Centred Display'),
+        aliases: [t('Centered Toolbar'), t('Full-width Toolbar')],
+        desc: t('Whether the toolbar is centred or full-width, the default is full-width.'),
+        render: (setting: Setting) => setting.addToggle((toggle) => toggle.setValue(this.plugin.settings.Iscentered)
+          .onChange(async (value) => {
+            this.plugin.settings.Iscentered = value;
+            await this.plugin.saveSettings();
+            this.triggerRefresh();
+          })),
+      });
+    }
+
+    if (editingStyle === 'fixed') {
+      definitions.push({
+        name: t('Editing Toolbar Columns'),
+        aliases: [t('Toolbar Columns'), t('Columns per Row')],
+        desc: t('Choose the number of columns per row to display on Editing Toolbar.'),
+        render: (setting: Setting) => setting.addSlider((slider) => slider
+          .setLimits(1, 32, 1)
+          .setValue(this.plugin.settings.cMenuNumRows)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.cMenuNumRows = value;
+            await this.plugin.saveSettings();
+            this.triggerRefresh();
+          })),
+      }, {
+        name: t('Fixed Position Offset'),
+        aliases: [t('Toolbar Offset'), t('Fixed Toolbar Position')],
+        desc: t('Choose the offset of the Editing Toolbar in the fixed position.'),
+        render: (setting: Setting) => setting.addButton((button) => button
+          .setButtonText(t('Settings'))
+          .onClick(() => new openSlider(this.app, this.plugin).open())),
+      });
+    }
+
+    definitions.push(
+      this.createDeclarativeAppearanceColorDefinition('Toolbar Theme', [t('Theme'), t('Preset Theme')], (setting) => {
+        const style = (this.plugin.appearanceEditStyle) || editingStyle;
+        const bucket = this.getAppearanceBucket(style);
+        const options: Record<string, string> = {};
+        AESTHETIC_STYLES.forEach((aesthetic) => { options[aesthetic] = aesthetic === 'custom' ? t('Custom Theme') : t(aesthetic); });
+        setting.addDropdown((dropdown) => {
+          dropdown.addOptions(options);
+          const customOption = Array.from(dropdown.selectEl.options).find((option) => option.value === 'custom');
+          if (customOption) customOption.disabled = true;
+          dropdown.addOption('light', t('┌ Light'));
+          dropdown.addOption('dark', t('├ Dark'));
+          dropdown.addOption('vibrant', t('├ Vibrant'));
+          dropdown.addOption('minimal', t('├ Minimal'));
+          dropdown.addOption('elegant', t('└ Elegant'));
+          dropdown.setValue(this.resolveToolbarThemeOption(bucket));
+          dropdown.onChange(async (value) => {
+            const current = this.getAppearanceBucket(style);
+            const preset = TOOLBAR_COLOR_PRESETS[value];
+            if (preset) {
+              current.aestheticStyle = 'custom';
+              [current.toolbarBackgroundColor, current.toolbarIconColor, current.toolbarIconSize] = preset;
+              document.documentElement.style.setProperty('--editing-toolbar-background-color', preset[0]);
+              document.documentElement.style.setProperty('--editing-toolbar-icon-color', preset[1]);
+              document.documentElement.style.setProperty('--toolbar-icon-size', `${preset[2]}px`);
+            } else {
+              // default / tiny / glass：颜色由 CSS 类决定，清掉自定义色覆盖，
+              // 否则预览与取色器一直停留在上一次的自定义颜色
+              current.aestheticStyle = value;
+              delete current.toolbarBackgroundColor;
+              delete current.toolbarIconColor;
+              current.toolbarIconSize = 18;
+              document.documentElement.style.removeProperty('--editing-toolbar-background-color');
+              document.documentElement.style.removeProperty('--editing-toolbar-icon-color');
+              document.documentElement.style.setProperty('--toolbar-icon-size', '18px');
+            }
+            this.plugin.toolbarIconSize = current.toolbarIconSize ?? 18;
+            await this.plugin.saveSettings();
+            this.refreshSettings();
+            this.triggerRefresh();
+          });
+        });
+      }),
+      this.createDeclarativeAppearanceColorDefinition('Toolbar Background Color', [t('Background Color'), t('Toolbar Background')], (setting) => {
+        const style = (this.plugin.appearanceEditStyle) || editingStyle;
+        return this.addAppearancePicker(setting, style, 'toolbarBackgroundColor', true);
+      }),
+      this.createDeclarativeAppearanceColorDefinition('Toolbar Icon Color', [t('Icon Color'), t('Toolbar Icons')], (setting) => {
+        const style = (this.plugin.appearanceEditStyle) || editingStyle;
+        return this.addAppearancePicker(setting, style, 'toolbarIconColor', false);
+      }),
+      {
+        name: t('Toolbar Icon Size'),
+        aliases: [t('Icon Size'), t('Toolbar Size')],
+        desc: t('Set the size of the toolbar icon (px); default: 18px'),
+        render: (setting: Setting) => setting.addSlider((slider) => slider
+          .setLimits(12, 32, 1)
+          .setValue(this.getAppearanceBucket(editingStyle).toolbarIconSize ?? this.plugin.settings.toolbarIconSize)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            const style = (this.plugin.appearanceEditStyle) || editingStyle;
+            const bucket = this.getAppearanceBucket(style);
+            bucket.toolbarIconSize = value;
+            bucket.aestheticStyle = 'custom';
+            if (this.plugin.positionStyle === style) {
+              this.plugin.toolbarIconSize = value;
+              document.documentElement.style.setProperty('--toolbar-icon-size', `${value}px`);
+            }
+            await this.plugin.saveSettings();
+            this.triggerRefresh();
+            this.refreshSettings();
+          })),
+      },
+      {
+        name: t('Toolbar Preview'),
+        aliases: [t('Preview'), t('Toolbar Appearance Preview')],
+        render: (setting: Setting) => {
+          setting.settingEl.empty();
+          setting.settingEl.addClass('editing-toolbar-declarative-content');
+          setting.settingEl.setCssStyles({ display: 'block' });
+          this.createToolbarPreview(setting.settingEl, editingStyle);
+        },
+      },
+    );
+    return definitions;
+  }
+
+  private createDeclarativeAppearanceColorDefinition(
+    name: string,
+    aliases: string[],
+    render: (setting: Setting) => void | (() => void),
+  ): DeclarativeSettingsNode {
+    return { name: t(name), aliases, render };
+  }
+
+  private addAppearancePicker(
+    setting: Setting,
+    style: ToolbarStyleKey,
+    settingKey: 'toolbarBackgroundColor' | 'toolbarIconColor',
+    opacity: boolean,
+  ): () => void {
+    const pickerContainer = setting.controlEl.createDiv({ cls: 'pickr-container' });
+    const pickerEl = pickerContainer.createDiv({ cls: 'picker' });
+    const bucket = this.getAppearanceBucket(style);
+    const pickr = this.createSettingsPickr({
+      isView: false,
+      el: pickerEl,
+      containerEl: pickerContainer,
+      swatches: opacity
+        ? ['#F5F8FA', '#F4F1E8', '#2D3033', '#1A2F28', '#2A1D3B']
+        : ['#4A5568', '#D4AF37', '#2D3033', '#6D5846', '#4C2A55'],
+      opacity,
+      defaultColor: bucket[settingKey] ?? this.plugin.settings[settingKey],
     });
+    this.setupPickrEvents(pickr, settingKey, opacity ? 'background-color' : 'icon-color');
+    this.ensurePickrDismissListeners();
+    this.pickrs.push(pickr);
+    return () => {
+      pickr.destroyAndRemove();
+      this.pickrs.remove(pickr);
+    };
+  }
+
+  private createCustomToolbarColorSettings(containerEl: HTMLElement): void {
+    const paintbrushContainer = containerEl.createDiv('custom-paintbrush-container');
+    paintbrushContainer.setCssStyles({ padding: '16px' });
+    paintbrushContainer.setCssStyles({ borderRadius: '8px' });
+    paintbrushContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+    paintbrushContainer.setCssStyles({ marginBottom: '20px' });
+
+    new Setting(paintbrushContainer)
+      .setName(t('🎨 Set Custom Background'))
+      .setDesc(t('Click on the picker to adjust the color'))
+      .setClass('custom_bg')
+      .then((setting) => this.addCustomPalettePickers(
+        setting,
+        'custom_bg',
+        ['#FFB78B8C', '#CDF4698C', '#A0CCF68C', '#F0A7D88C', '#ADEFEF8C'],
+        'background-color',
+      ));
+
+    new Setting(paintbrushContainer)
+      .setName(t('🖌️ Set Custom Font Color'))
+      .setDesc(t('Click on the picker to adjust the color'))
+      .setClass('custom_font')
+      .then((setting) => this.addCustomPalettePickers(
+        setting,
+        'custom_fc',
+        ['#D83931', '#DE7802', '#245BDB', '#6425D0', '#646A73'],
+        'color',
+      ));
+  }
+
+  private createSettingsPickr(opts: Parameters<typeof getPickrSettings>[0]): Pickr {
+    const pickr = Pickr.create(getPickrSettings(opts));
+    this.guardPickrInstance(pickr);
+    const internals = pickr as unknown as {
+      _initializingActive?: boolean;
+      _setupAnimationFrame?: number;
+      _rePositioningPicker?: () => void;
+      _emit?: (event: string, ...args: unknown[]) => void;
+    };
+
+    if (internals._initializingActive) {
+      // Pickr finishes its initialisation inside a requestAnimationFrame and
+      // suppresses every save/change event until that frame arrives. Since
+      // Obsidian 1.13 the settings can render in their own window, and a window
+      // that is occluded or not being rendered never produces that frame - the
+      // swatch then stays colourless and choosing a colour saves nothing.
+      // Finish the initialisation here instead of waiting for a frame.
+      const ownerWindow =
+        (pickr.getRoot() as { button?: HTMLElement } | null)?.button?.ownerDocument?.defaultView ?? window;
+
+      if (typeof internals._setupAnimationFrame === 'number') {
+        // pickr 的打包产物里是裸 requestAnimationFrame，回调固定排在插件所在的
+        // 主 window 上；设置页渲染在独立窗口时 ownerWindow 与其不一致，
+        // 只取消 ownerWindow 会留下残留回调，每帧重放初始化
+        // （重发未改色的 save → 无限重渲染；实例销毁后则每帧空引用报错）
+        window.cancelAnimationFrame(internals._setupAnimationFrame);
+        if (ownerWindow !== window) {
+          ownerWindow.cancelAnimationFrame(internals._setupAnimationFrame);
+        }
+        internals._setupAnimationFrame = undefined;
+      }
+
+      pickr.setColor(opts.defaultColor);
+      internals._rePositioningPicker?.();
+      internals._initializingActive = false;
+      internals._emit?.('init');
+    }
+
+    return pickr;
+  }
+
+  /**
+   * pickr 被销毁（destroyAndRemove 会把实例字段全部置 null）后，残留的动画帧
+   * 回调仍会调用 setColor/setHSVA/_updateOutput 并解引用 this._root，每个渲染帧
+   * 抛一次 "Cannot read properties of null (reading 'interaction')"。
+   * 这里把依赖 DOM 的实例方法包一层，_root 为空时一律 no-op，同时让
+   * destroy/destroyAndRemove 幂等。
+   */
+  private guardPickrInstance(pickr: Pickr): void {
+    const target = pickr as unknown as Record<string, unknown>;
+    const guardedMethods = [
+      '_updateOutput', 'setHSVA', 'setColor', 'applyColor', 'setColorRepresentation',
+      '_clearColor', '_rePositioningPicker', '_emit', 'addSwatch',
+      'hide', 'show', 'disable', 'enable', 'destroy', 'destroyAndRemove',
+    ];
+    for (const name of guardedMethods) {
+      const original = target[name];
+      if (typeof original !== 'function') continue;
+      target[name] = function guardWrapper(this: { _root?: unknown }, ...args: unknown[]) {
+        if (this._root == null) return undefined;
+        return (original as (...a: unknown[]) => unknown).apply(this, args);
+      };
+    }
+
+    const originalIsOpen = target.isOpen;
+    if (typeof originalIsOpen === 'function') {
+      target.isOpen = function isOpenGuard(this: { _root?: unknown }) {
+        if (this._root == null) return false;
+        return Boolean((originalIsOpen as () => unknown).call(this));
+      };
+    }
+  }
+
+  private addCustomPalettePickers(
+    setting: Setting,
+    settingPrefix: 'custom_bg' | 'custom_fc',
+    swatches: string[],
+    cssProperty: string,
+  ): () => void {
+    const pickerContainer = setting.controlEl.createDiv({ cls: 'pickr-container' });
+    const pickers: Pickr[] = [];
+    for (let i = 0; i < 5; i++) {
+      const pickerEl = pickerContainer.createDiv({ cls: 'picker' });
+      const pickr = this.createSettingsPickr({
+        isView: false,
+        el: pickerEl,
+        containerEl: pickerContainer,
+        swatches,
+        opacity: true,
+        defaultColor: (this.plugin.settings as unknown as Record<string, string>)[`${settingPrefix}${i + 1}`] || '#000000',
+      });
+      this.setupPickrEvents(pickr, `${settingPrefix}${i + 1}`, cssProperty);
+      this.ensurePickrDismissListeners();
+      this.pickrs.push(pickr);
+      pickers.push(pickr);
+    }
+    return () => {
+      pickers.forEach((pickr) => {
+        pickr.destroyAndRemove();
+        this.pickrs.remove(pickr);
+      });
+    };
   }
 
   private async refreshCustomOllamaModels(): Promise<void> {
@@ -157,18 +834,69 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       new Notice(`${t('Failed to load Ollama models:')} ${this.cachedCustomOllamaModelsError}`);
     }
 
-    this.display();
+    this.refreshSettings();
+  }
+
+  private async refreshCustomOpenAIModels(): Promise<void> {
+    const baseUrl = this.plugin.settings.ai.customModel.baseUrl.trim();
+
+    try {
+      const models = await this.plugin.aiManager.listCustomOpenAIModels();
+      this.cachedCustomOpenAIModels = models;
+      this.cachedCustomOpenAIModelsBaseUrl = baseUrl;
+      this.cachedCustomOpenAIModelsError = '';
+
+      if (models.length === 0) {
+        new Notice(t('No models found at this endpoint.'));
+      }
+    } catch (error) {
+      this.cachedCustomOpenAIModels = [];
+      this.cachedCustomOpenAIModelsBaseUrl = baseUrl;
+      this.cachedCustomOpenAIModelsError = getAIErrorMessage(error);
+      new Notice(`${t('Failed to load models:')} ${this.cachedCustomOpenAIModelsError}`);
+    }
+
+    this.refreshSettings();
+  }
+
+  private updateUrlValidationNote(container: HTMLElement, baseUrl: string, apiFormat: string): void {
+    // Remove previous validation note
+    const existingNote = container.querySelector('.editing-toolbar-url-warning');
+    if (existingNote) existingNote.remove();
+
+    const apiFormatToCheck = apiFormat || this.plugin.settings.ai.customModel.apiFormat || 'openai-compatible';
+    const warnings = AIUrlHelper.getBaseUrlWarnings(baseUrl, apiFormatToCheck);
+    if (warnings.length === 0) return;
+
+    warnings.forEach(({ message }) => {
+      const noteEl = container.createDiv({ cls: 'editing-toolbar-url-warning editing-toolbar-ai-note' });
+      noteEl.setCssStyles({ color: 'var(--text-warning)' });
+      noteEl.setCssStyles({ borderLeft: '3px solid var(--color-orange)' });
+      noteEl.setCssStyles({ paddingLeft: '8px' });
+      noteEl.setCssStyles({ marginTop: '6px' });
+      noteEl.setCssStyles({ fontSize: '12px' });
+      noteEl.setText(message);
+    });
   }
 
   display(): void {
-    this.destroyPickrs();
-    const { containerEl } = this;
+    const tab = this as unknown as { update?: () => void };
+    if (typeof tab.update === 'function') {
+      tab.update();
+      return;
+    }
+
+    this.renderSettings(this.containerEl, false);
+  }
+
+  private renderSettings(containerEl: HTMLElement, useDeclarativeCommandList: boolean): void {
+    this.destroySettingsResources();
     containerEl.empty();
     // 保持现有的头部代码
     this.createHeader(containerEl);
 
     // 创建标签页容器
-    const tabContainer = containerEl.createEl('div', {
+    const tabContainer = containerEl.createDiv({
       cls: 'editing-toolbar-tabs'
     });
 
@@ -176,19 +904,24 @@ export class editingToolbarSettingTab extends PluginSettingTab {
     const visibleTabs = SETTING_TABS;
 
     visibleTabs.forEach(tab => {
-      const tabButton = tabContainer.createEl('div', {
+      const tabButton = tabContainer.createDiv({
         cls: `editing-toolbar-tab ${this.activeTab === tab.id ? 'active' : ''}`
       });
       setIcon(tabButton, tab.icon);
-      tabButton.createEl('span', { text: tab.name });
+      tabButton.createSpan({ text: tab.name });
 
       tabButton.addEventListener('click', () => {
+        if (tab.id === 'commands' && useDeclarativeCommandList) {
+          this.openDeclarativeCommandSettingsPage();
+          return;
+        }
+
         this.activeTab = tab.id;
         this.display();
       });
     });
     // 创建设置内容容器
-    const contentContainer = containerEl.createEl('div', {
+    const contentContainer = containerEl.createDiv({
       cls: 'editing-toolbar-content'
     });
     // 根据当前激活的标签页显示对应设置
@@ -203,7 +936,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         this.displayCustomCommandSettings(contentContainer);
         break;
       case 'commands':
-        this.displayCommandSettings(contentContainer);
+        this.displayCommandSettings(contentContainer, useDeclarativeCommandList);
         break;
       case 'ai':
         this.displayAISettings(contentContainer);
@@ -215,12 +948,12 @@ export class editingToolbarSettingTab extends PluginSettingTab {
   }
   // 创建删除按钮
   private createDeleteButton(
-    button: any,
+    button: ButtonComponent,
     deleteAction: () => Promise<void>,
     tooltip: string = t('Delete')
   ) {
     let isConfirming = false;
-    let confirmTimeout: NodeJS.Timeout;
+    let confirmTimeout: number;
 
     button
       .setIcon('editingToolbarDelete')
@@ -228,7 +961,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       .onClick(async () => {
         if (isConfirming) {
           // 清除确认状态和超时
-          clearTimeout(confirmTimeout);
+          window.clearTimeout(confirmTimeout);
           button
             .setIcon('editingToolbarDelete')
             .setTooltip(tooltip);
@@ -246,7 +979,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           button.buttonEl.addClass('mod-warning');
 
           // 5秒后重置按钮状态
-          confirmTimeout = setTimeout(() => {
+          confirmTimeout = window.setTimeout(() => {
             button
               .setIcon('editingToolbarDelete')
               .setTooltip(tooltip);
@@ -259,22 +992,22 @@ export class editingToolbarSettingTab extends PluginSettingTab {
   // 拆分设置项到不同方法
   private displayGeneralSettings(containerEl: HTMLElement): void {
     const generalSettingContainer = containerEl.createDiv('generalSetting-container');
-    generalSettingContainer.style.padding = '16px';
-    generalSettingContainer.style.borderRadius = '8px';
-    generalSettingContainer.style.backgroundColor = 'var(--background-secondary)';
-    generalSettingContainer.style.marginBottom = '20px';
+    generalSettingContainer.setCssStyles({ padding: '16px' });
+    generalSettingContainer.setCssStyles({ borderRadius: '8px' });
+    generalSettingContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+    generalSettingContainer.setCssStyles({ marginBottom: '20px' });
     new Setting(generalSettingContainer)
       .setName(t('Editing Toolbar Append Method'))
       .setDesc(t('Choose where Editing Toolbar will append upon regeneration.'))
       .addDropdown((dropdown) => {
-        let methods: Record<string, string> = {};
-        APPEND_METHODS.map((method) => (methods[method] = method));
+        const methods: Record<string, string> = {};
+        APPEND_METHODS.map((method) => (methods[method] = t(method)));
         dropdown.addOptions(methods);
         dropdown
           .setValue(this.plugin.settings.appendMethod)
           .onChange((appendMethod) => {
             this.plugin.settings.appendMethod = appendMethod;
-            this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           });
       });
     // 添加多配置切换选项
@@ -393,90 +1126,25 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       .addToggle(toggle => toggle.setValue(this.plugin.settings?.isLoadOnMobile ?? false)
         .onChange((value) => {
           this.plugin.settings.isLoadOnMobile = value;
-          this.plugin.saveSettings();
+          void this.plugin.saveSettings();
           this.triggerRefresh();
         }));
 
-    // Custom background and font color settings
-    const paintbrushContainer = containerEl.createDiv('custom-paintbrush-container');
-    paintbrushContainer.style.padding = '16px';
-    paintbrushContainer.style.borderRadius = '8px';
-    paintbrushContainer.style.backgroundColor = 'var(--background-secondary)';
-    paintbrushContainer.style.marginBottom = '20px';
-    new Setting(paintbrushContainer)
-      .setName(t('🎨 Set Custom Background'))
-      .setDesc(t('Click on the picker to adjust the color'))
-      .setClass('custom_bg')
-      .then((setting) => {
-        const pickerContainer = setting.controlEl.createDiv({ cls: "pickr-container" });
-
-        for (let i = 0; i < 5; i++) {
-          const pickerEl = pickerContainer.createDiv({ cls: "picker" });
-
-          const pickr = Pickr.create(
-            getPickrSettings({
-              isView: false,
-              el: pickerEl,
-              containerEl: pickerContainer,
-              swatches: [
-                '#FFB78B8C',
-                '#CDF4698C',
-                '#A0CCF68C',
-                '#F0A7D88C',
-                '#ADEFEF8C',
-              ],
-              opacity: true,
-              defaultColor: (this.plugin.settings as any)[`custom_bg${i + 1}`] || '#000000'
-            })
-          );
-          this.setupPickrEvents(pickr, `custom_bg${i + 1}`, 'background-color');
-          this.pickrs.push(pickr);
-        }
-      });
-    new Setting(paintbrushContainer)
-      .setName(t('🖌️ Set Custom Font Color'))
-      .setDesc(t('Click on the picker to adjust the color'))
-      .setClass('custom_font')
-      .then((setting) => {
-        const pickerContainer = setting.controlEl.createDiv({ cls: "pickr-container" });
-
-        for (let i = 0; i < 5; i++) {
-          const pickerEl = pickerContainer.createDiv({ cls: "picker" });
-
-          const pickr = Pickr.create(
-            getPickrSettings({
-              isView: false,
-              el: pickerEl,
-              containerEl: pickerContainer,
-              swatches: [
-                '#D83931',
-                '#DE7802',
-                '#245BDB',
-                '#6425D0',
-                '#646A73',
-              ],
-              opacity: true,
-              defaultColor: (this.plugin.settings as any)[`custom_fc${i + 1}`] || '#000000'
-            })
-          );
-          this.setupPickrEvents(pickr, `custom_fc${i + 1}`, 'color');
-          this.pickrs.push(pickr);
-        }
-      });
+    this.createCustomToolbarColorSettings(containerEl);
 
   }
   private displayAppearanceSettings(containerEl: HTMLElement): void {
 
     const appearanceSettingContainer = containerEl.createDiv('appearanceSetting-container');
-    appearanceSettingContainer.style.padding = '16px';
-    appearanceSettingContainer.style.borderRadius = '8px';
-    appearanceSettingContainer.style.backgroundColor = 'var(--background-secondary)';
-    appearanceSettingContainer.style.marginBottom = '20px';
+    appearanceSettingContainer.setCssStyles({ padding: '16px' });
+    appearanceSettingContainer.setCssStyles({ borderRadius: '8px' });
+    appearanceSettingContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+    appearanceSettingContainer.setCssStyles({ marginBottom: '20px' });
     // Aesthetic style setting
 
     // Decide which style we are editing in this tab
     const editingStyle: ToolbarStyleKey =
-      (this.plugin.appearanceEditStyle as ToolbarStyleKey) ||
+      (this.plugin.appearanceEditStyle) ||
       (this.plugin.settings.positionStyle as ToolbarStyleKey) ||
       "top";
     this.plugin.appearanceEditStyle = editingStyle;
@@ -487,7 +1155,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       .setDesc(t("Choose which toolbar style's appearance you want to edit."))
       .addDropdown((dropdown) => {
         const positions: Record<string, string> = {};
-        POSITION_STYLES.map((position) => (positions[position] = position));
+        POSITION_STYLES.map((position) => (positions[position] = t(position)));
         dropdown
           .addOptions(positions)
           .setValue(editingStyle)
@@ -510,7 +1178,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         .addToggle(toggle => toggle.setValue(this.plugin.settings?.autohide)
           .onChange((value) => {
             this.plugin.settings.autohide = value;
-            this.plugin.saveSettings();
+            void this.plugin.saveSettings();
             this.triggerRefresh();
           }));
 
@@ -522,7 +1190,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         .addToggle(toggle => toggle.setValue(this.plugin.settings?.Iscentered)
           .onChange((value) => {
             this.plugin.settings.Iscentered = value;
-            this.plugin.saveSettings();
+            void this.plugin.saveSettings();
             this.triggerRefresh();
           }));
     }
@@ -561,14 +1229,10 @@ export class editingToolbarSettingTab extends PluginSettingTab {
     // Color settings
     this.createColorSettings(containerEl);
   }
-  private displayCommandSettings(containerEl: HTMLElement): void {
+  private displayCommandSettings(containerEl: HTMLElement, useDeclarativeCommandList = false): void {
     const commandSettingContainer = containerEl.createDiv('commandSetting-container');
-    commandSettingContainer.style.padding = '16px';
-    commandSettingContainer.style.borderRadius = '8px';
-    commandSettingContainer.style.backgroundColor = 'var(--background-secondary)';
-    commandSettingContainer.style.marginBottom = '20px';
     if (this.plugin.settings.enableMultipleConfig) {
-      const configSwitcher = new Setting(commandSettingContainer)
+      new Setting(commandSettingContainer)
         .setName(t('Current Configuration'))
         .setDesc(t('Switch between different command configurations.'))
         .addDropdown(dropdown => {
@@ -597,16 +1261,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       // 获取当前编辑的配置类型
       const currentConfigType = this.currentEditingConfig;
 
-      const commandsArray = this.getCommandsArrayByType(currentConfigType);
-      const buttonContainer = containerEl.createDiv('command-buttons-container');
-
-      buttonContainer.style.display = 'flex';
-      buttonContainer.style.flexDirection = 'column';
-      buttonContainer.style.gap = '10px';
-
-      buttonContainer.style.padding = '16px';
-      buttonContainer.style.borderRadius = '8px';
-      buttonContainer.style.backgroundColor = 'var(--background-secondary)';
+      const buttonContainer = commandSettingContainer.createDiv('command-buttons-container');
 
       // 添加命令导入设置
       const importSetting = new Setting(buttonContainer)
@@ -729,7 +1384,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         text: t('One-click Clear'),
         cls: 'mod-warning' // Obsidian 的警告样式类
       });
-      clearButton.addEventListener('click', async () => {
+      clearButton.addEventListener('click', async () => {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
         ConfirmModal.show(this.app, {
           message: t('Are you sure you want to clear all commands under the current style?'),
           onConfirm: async () => {
@@ -741,13 +1396,11 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         })
       });
     }
-    const commandListContainer = containerEl.createDiv('command-lists-container');
-    commandListContainer.style.padding = '16px';
-    commandListContainer.style.borderRadius = '8px';
+    const commandListContainer = commandSettingContainer.createDiv('command-lists-container');
     commandListContainer.addClass(`${this.currentEditingConfig}`);
     // 添加当前正在编辑的配置提示
     if (this.plugin.settings.enableMultipleConfig) {
-      const positionStyleInfo = commandListContainer.createEl('div', {
+      commandListContainer.createDiv({
         cls: `position-style-info ${this.currentEditingConfig}`,
         text: t(`Currently editing commands for`) + ` "${this.currentEditingConfig} Style" ` + t(`configuration`)
       });
@@ -764,15 +1417,105 @@ export class editingToolbarSettingTab extends PluginSettingTab {
             this.triggerRefresh();
           });
       });
-    // 现有的命令列表代码
-    this.createCommandList(commandListContainer);
+    if (!useDeclarativeCommandList) {
+      this.createCommandList(commandListContainer);
+    }
+  }
+
+  private openDeclarativePage(pageDefinition: DeclarativeSettingsNode | null): boolean {
+    if (!pageDefinition) return false;
+
+    const declarativeTab = this as unknown as {
+      getElementForDefinition?: (definition: DeclarativeSettingsNode) => HTMLElement | undefined;
+    };
+    const pageEl = declarativeTab.getElementForDefinition?.(pageDefinition);
+    if (!pageEl) return false;
+
+    pageEl.click();
+    return true;
+  }
+
+  private openDeclarativeCommandSettingsPage(): void {
+    if (this.openSettingsPage('commands', false)) return;
+
+    this.activeTab = 'commands';
+    this.display();
+  }
+
+  private pageDefinitionFor(pageId: string): DeclarativeSettingsNode | null {
+    switch (pageId) {
+      case 'general':
+        return this.generalSettingsPageDefinition;
+      case 'ai':
+        return this.aiSettingsPageDefinition;
+      case 'commands':
+        return this.commandSettingsPageDefinition;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Opens the plugin's settings on the given page. Obsidian 1.13+ renders the
+   * pages declaratively, older versions keep the plugin's own tab strip; both
+   * are handled here so callers do not have to know which one is in use.
+   */
+  private openSettingsPage(pageId: string, openTab = true): boolean {
+    if (openTab) {
+      this.app.setting.open();
+      this.app.setting.openTabById('editing-toolbar');
+    }
+
+    if (this.openDeclarativePage(this.pageDefinitionFor(pageId))) return true;
+
+    const tabsContainer = (this.containerEl?.ownerDocument ?? document)
+      .querySelector<HTMLElement>('.editing-toolbar-tabs');
+    const tabIndex = SETTING_TABS.findIndex((tab) => tab.id === pageId);
+    const tabButton = (tabIndex >= 0 ? tabsContainer?.children[tabIndex] : undefined) as
+      | HTMLElement
+      | undefined;
+    tabButton?.click();
+    return !!tabButton;
+  }
+
+  /**
+   * Opens the settings page that holds the custom colour presets and highlights
+   * the requested row. Used by the "Custom Font Color" / "Custom Backgroud
+   * Color" buttons in the toolbar colour palettes.
+   */
+  revealCustomColorPreset(settingClass: 'custom_bg' | 'custom_font'): void {
+    this.app.setting.open();
+    this.app.setting.openTabById('editing-toolbar');
+
+    window.setTimeout(() => {
+      this.openSettingsPage('general', false);
+
+      window.setTimeout(() => {
+        const row = (this.containerEl?.ownerDocument ?? document)
+          .querySelector<HTMLElement>(`.setting-item.${settingClass}`);
+        if (!row) return;
+
+        row.scrollIntoView?.({ block: 'center' });
+        row.addClass('toolbar-cta');
+      }, 150);
+    }, 200);
+  }
+
+  /** Opens the settings on the AI page. Used by the AI prompt panel. */
+  revealAISettings(): void {
+    this.app.setting.open();
+    this.app.setting.openTabById('editing-toolbar');
+
+    window.setTimeout(() => {
+      this.openSettingsPage('ai', false);
+    }, 200);
   }
   private displayCustomCommandSettings(containerEl: HTMLElement): void {
     containerEl.empty();
 
     const customCommandsContainer = containerEl.createDiv('custom-commands-container');
     // 添加说明
-    const descriptionEl = customCommandsContainer.createEl('p', {
+    customCommandsContainer.createEl('p', {
       text: t('Add, edit or delete custom format commands.')
     });
       // Regex command behavior setting
@@ -786,20 +1529,20 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         }));
     // 添加命令列表
     const commandListContainer = customCommandsContainer.createDiv('command-list-container');
-    commandListContainer.style.padding = '16px';
-    commandListContainer.style.borderRadius = '8px';
-    commandListContainer.style.backgroundColor = 'var(--background-secondary)';
-    commandListContainer.style.marginBottom = '20px';
-    commandListContainer.style.marginTop = '20px';
+    commandListContainer.setCssStyles({ padding: '16px' });
+    commandListContainer.setCssStyles({ borderRadius: '8px' });
+    commandListContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+    commandListContainer.setCssStyles({ marginBottom: '20px' });
+    commandListContainer.setCssStyles({ marginTop: '20px' });
     // 添加新命令按钮容器
     const addButtonContainer = customCommandsContainer.createDiv('add-command-button-container');
-    addButtonContainer.style.padding = '16px';
-    addButtonContainer.style.borderRadius = '8px';
-    addButtonContainer.style.backgroundColor = 'var(--background-secondary)';
-    addButtonContainer.style.marginBottom = '20px';
-    addButtonContainer.style.marginTop = '20px';
-    addButtonContainer.style.display = 'flex';
-    addButtonContainer.style.gap = '10px';
+    addButtonContainer.setCssStyles({ padding: '16px' });
+    addButtonContainer.setCssStyles({ borderRadius: '8px' });
+    addButtonContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+    addButtonContainer.setCssStyles({ marginBottom: '20px' });
+    addButtonContainer.setCssStyles({ marginTop: '20px' });
+    addButtonContainer.setCssStyles({ display: 'flex' });
+    addButtonContainer.setCssStyles({ gap: '10px' });
     // 添加普通格式命令按钮
     const addFormatButton = addButtonContainer.createEl('button', {
       text: t('Add Format Command')
@@ -866,7 +1609,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
               icon: command.icon || 'obsidian-new'
             };
             this.plugin.settings.menuCommands.push(toolbarCommand);
-            this.plugin.saveSettings().then(() => {
+            void this.plugin.saveSettings().then(() => {
               new Notice(t('Command added to toolbar'));
               dispatchEvent(new Event("editingToolbar-NewCommand"));
               this.plugin.reloadCustomCommands();
@@ -914,8 +1657,8 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           const iconContainer = commandSetting.nameEl.createSpan({
             cls: "editingToolbarSettingsIcon"
           });
-          iconContainer.style.marginRight = "8px";
-          checkHtml(command.icon) ? iconContainer.innerHTML = command.icon : setIcon(iconContainer, command.icon)
+          iconContainer.setCssStyles({ marginRight: "8px" });
+          checkHtml(command.icon) ? safeSetInnerHTML(iconContainer, command.icon) : setIcon(iconContainer, command.icon)
         } catch (e) {
           console.error("Failed to set icon:", e);
         }
@@ -924,62 +1667,73 @@ export class editingToolbarSettingTab extends PluginSettingTab {
   }
   // 工具方法
   private triggerRefresh(): void {
-    setTimeout(() => {
+    window.setTimeout(() => {
       dispatchEvent(new Event("editingToolbar-NewCommand"));
     }, 100);
   }
   private createHeader(containerEl: HTMLElement): void {
-    const headerContainer = containerEl.createEl("div", {
+    const headerContainer = containerEl.createDiv({
       cls: "editing-toolbar-header"
     });
     // 创建左侧标题容器
-    const titleContainer = headerContainer.createEl("div", {
+    const titleContainer = headerContainer.createDiv({
       cls: "editing-toolbar-title-container"
     });
-    titleContainer.createEl("h1", {
-      text: "Obsidian Editing Toolbar: " + this.plugin.manifest.version,
-      cls: "editing-toolbar-title"
-    });
+    new Setting(titleContainer).setName("Obsidian Editing Toolbar: " + this.plugin.manifest.version).setHeading().nameEl.addClass("editing-toolbar-title");
     // 创建右侧信息容器
-    const infoContainer = headerContainer.createEl("div", {
+    const infoContainer = headerContainer.createDiv({
       cls: "editing-toolbar-info"
     });
-    // 添加修复按钮
-    new Setting(infoContainer)
-      .setClass("editing-toolbar-fix-button")
-      .addButton((fixButton) => {
-        fixButton
-          .setIcon("wrench")
-          .setTooltip(t("Fix"))
-          .onClick(() => {
-            new UpdateNoticeModal(this.app, this.plugin).open();
-          });
+    // Keep the repair action in the header without creating a full Setting row.
+    const fixButton = new ButtonComponent(infoContainer)
+      .setIcon("wrench")
+      .setTooltip(t("Fix"))
+      .onClick(() => {
+        new UpdateNoticeModal(this.app, this.plugin).open();
       });
+    fixButton.buttonEl.addClass("clickable-icon", "editing-toolbar-fix-button");
   }
   private getAppearanceBucket(style: ToolbarStyleKey): StyleAppearanceSettings {
     const settings = this.plugin.settings;
-  
+
     if (!settings.appearanceByStyle || typeof settings.appearanceByStyle !== "object") {
-      settings.appearanceByStyle = {} as AppearanceByStyle;
+      settings.appearanceByStyle = {};
     }
-    const store = settings.appearanceByStyle as AppearanceByStyle;
+    const store = settings.appearanceByStyle;
     if (!store[style] || typeof store[style] !== "object") {
       store[style] = {};
     }
-    return store[style]!;
+    return store[style];
+  }
+
+  /**
+   * 反查主题下拉框应该显示的值。色卡预设（Light/Dark/...）存储时写的是
+   * aestheticStyle='custom' + 预设颜色，直接回读会落在被禁用的 "Custom Theme"
+   * 上；这里按颜色把选过的预设还原出来，只有颜色对不上任何预设时才显示 custom。
+   */
+  private resolveToolbarThemeOption(bucket: StyleAppearanceSettings): string {
+    const style = bucket.aestheticStyle ?? this.plugin.settings.aestheticStyle ?? "default";
+    if (style !== "custom") return style;
+
+    const bg = (bucket.toolbarBackgroundColor ?? this.plugin.settings.toolbarBackgroundColor ?? "").toLowerCase();
+    const icon = (bucket.toolbarIconColor ?? this.plugin.settings.toolbarIconColor ?? "").toLowerCase();
+    for (const [name, [presetBg, presetIcon]] of Object.entries(TOOLBAR_COLOR_PRESETS)) {
+      if (bg === presetBg.toLowerCase() && icon === presetIcon.toLowerCase()) return name;
+    }
+    return "custom";
   }
   private createColorSettings(containerEl: HTMLElement): void {
     const editingStyle: ToolbarStyleKey =
-      (this.plugin.appearanceEditStyle as ToolbarStyleKey) ||
+      (this.plugin.appearanceEditStyle) ||
       (this.plugin.settings.positionStyle as ToolbarStyleKey) ||
       "top";
     const appearanceBucket = this.getAppearanceBucket(editingStyle);
    
    
     const toolbarContainer = containerEl.createDiv('custom-toolbar-container');
-    toolbarContainer.style.padding = '16px';
-    toolbarContainer.style.borderRadius = '8px';
-    toolbarContainer.style.backgroundColor = 'var(--background-secondary)';
+    toolbarContainer.setCssStyles({ padding: '16px' });
+    toolbarContainer.setCssStyles({ borderRadius: '8px' });
+    toolbarContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
     // 添加主题选择下拉框
     new Setting(toolbarContainer)
       .setName(t("Toolbar Theme"))
@@ -988,85 +1742,60 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         const aesthetics: Record<string, string> = {};
         AESTHETIC_STYLES.forEach((aesthetic) => {
           aesthetics[aesthetic] =
-            aesthetic === "custom" ? t("Custom Theme") : aesthetic;
+            aesthetic === "custom" ? t("Custom Theme") : t(aesthetic);
         });
         dropdown.addOptions(aesthetics);
         dropdown.selectEl.options[3].disabled = true; // disable the raw "custom" option
-        dropdown.addOption("light", "┌ Light");
-        dropdown.addOption("dark", "├ Dark");
-        dropdown.addOption("vibrant", "├ Vibrant");
-        dropdown.addOption("minimal", "├ Minimal");
-        dropdown.addOption("elegant", "└ Elegant");
+        dropdown.addOption("light", t("┌ Light"));
+        dropdown.addOption("dark", t("├ Dark"));
+        dropdown.addOption("vibrant", t("├ Vibrant"));
+        dropdown.addOption("minimal", t("├ Minimal"));
+        dropdown.addOption("elegant", t("└ Elegant"));
         // Use the bucket for the currently edited style
-        dropdown.setValue(
-          (appearanceBucket.aestheticStyle as string) ??
-            this.plugin.settings.aestheticStyle
-        );
+        dropdown.setValue(this.resolveToolbarThemeOption(appearanceBucket));
         dropdown.onChange(async (value) => {
           const style =
-            (this.plugin.appearanceEditStyle as ToolbarStyleKey) ||
+            (this.plugin.appearanceEditStyle) ||
             (this.plugin.settings.positionStyle as ToolbarStyleKey) ||
             "top";
           const bucket = this.getAppearanceBucket(style);
+          const preset = TOOLBAR_COLOR_PRESETS[value];
 
-          if (value in aesthetics) {
+          if (!preset) {
+            // default / tiny / glass：颜色交给 CSS 类，清掉自定义色覆盖
             bucket.aestheticStyle = value;
+            delete bucket.toolbarBackgroundColor;
+            delete bucket.toolbarIconColor;
             bucket.toolbarIconSize = 18;
+            document.documentElement.style.removeProperty(
+              "--editing-toolbar-background-color"
+            );
+            document.documentElement.style.removeProperty(
+              "--editing-toolbar-icon-color"
+            );
+            document.documentElement.style.setProperty(
+              "--toolbar-icon-size",
+              "18px"
+            );
           } else {
             // custom presets all map to "custom" aestheticStyle
             bucket.aestheticStyle = "custom";
+            [bucket.toolbarBackgroundColor, bucket.toolbarIconColor, bucket.toolbarIconSize] = preset;
+            document.documentElement.style.setProperty(
+              "--editing-toolbar-background-color",
+              preset[0]
+            );
+            document.documentElement.style.setProperty(
+              "--editing-toolbar-icon-color",
+              preset[1]
+            );
+            document.documentElement.style.setProperty(
+              "--toolbar-icon-size",
+              `${preset[2]}px`
+            );
           }
-          // Set colours/sizes in the per-style bucket
-          switch (value) {
-            case "light":
-              bucket.toolbarBackgroundColor = "#F5F8FA";
-              bucket.toolbarIconColor = "#4A5568";
-              bucket.toolbarIconSize = 18;
-              break;
-            case "dark":
-              bucket.toolbarBackgroundColor = "#2D3033";
-              bucket.toolbarIconColor = "#E2E8F0";
-              bucket.toolbarIconSize = 18;
-              break;
-            case "vibrant":
-              bucket.toolbarBackgroundColor = "#7E57C2";
-              bucket.toolbarIconColor = "#FFFFFF";
-              bucket.toolbarIconSize = 20;
-              break;
-            case "minimal":
-              bucket.toolbarBackgroundColor = "#F8F9FA";
-              bucket.toolbarIconColor = "#6B7280";
-              bucket.toolbarIconSize = 16;
-              break;
-            case "elegant":
-              bucket.toolbarBackgroundColor = "#1A2F28";
-              bucket.toolbarIconColor = "#D4AF37";
-              bucket.toolbarIconSize = 19;
-              break;
-          }
-          // Push the current style's values into the global CSS vars
-          const bg =
-            bucket.toolbarBackgroundColor ??
-            this.plugin.settings.toolbarBackgroundColor;
-          const icon =
-            bucket.toolbarIconColor ??
-            this.plugin.settings.toolbarIconColor;
-          const size = bucket.toolbarIconSize ?? 18;
 
-          document.documentElement.style.setProperty(
-            "--editing-toolbar-background-color",
-            bg
-          );
-          document.documentElement.style.setProperty(
-            "--editing-toolbar-icon-color",
-            icon
-          );
-          document.documentElement.style.setProperty(
-            "--toolbar-icon-size",
-            `${size}px`
-          );
-
-          this.plugin.toolbarIconSize = size;
+          this.plugin.toolbarIconSize = bucket.toolbarIconSize ?? 18;
           this.destroyPickrs();
           this.display();
           await this.plugin.saveSettings();
@@ -1080,19 +1809,18 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       .then((setting) => {
         const pickerContainer = setting.controlEl.createDiv({ cls: "pickr-container" });
         const pickerEl = pickerContainer.createDiv({ cls: "picker" });
-        const pickr = Pickr.create(
-          getPickrSettings({
-            isView: false,
-            el: pickerEl,
-            containerEl: pickerContainer,
-            swatches: ['#F5F8FA', '#F4F1E8', '#2D3033', '#1A2F28', '#2A1D3B'],
-            opacity: true,
-            defaultColor:
-              appearanceBucket.toolbarBackgroundColor ??
-              this.plugin.settings.toolbarBackgroundColor,
-          })
-        );
+        const pickr = this.createSettingsPickr({
+          isView: false,
+          el: pickerEl,
+          containerEl: pickerContainer,
+          swatches: ['#F5F8FA', '#F4F1E8', '#2D3033', '#1A2F28', '#2A1D3B'],
+          opacity: true,
+          defaultColor:
+            appearanceBucket.toolbarBackgroundColor ??
+            this.plugin.settings.toolbarBackgroundColor,
+        });
         this.setupPickrEvents(pickr, 'toolbarBackgroundColor', 'background-color');
+        this.ensurePickrDismissListeners();
         this.pickrs.push(pickr);
       });
     new Setting(toolbarContainer)
@@ -1102,24 +1830,23 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       .then((setting) => {
         const pickerContainer = setting.controlEl.createDiv({ cls: "pickr-container" });
         const pickerEl = pickerContainer.createDiv({ cls: "picker" });
-        const pickr = Pickr.create(
-          getPickrSettings({
-            isView: false,
-            el: pickerEl,
-            containerEl: pickerContainer,
-            swatches: [
-              '#4A5568',
-              '#D4AF37',
-              '#2D3033',
-              '#6D5846',
-              '#4C2A55',
-            ],
-            opacity: false,
-            defaultColor: this.plugin.settings.toolbarIconColor
-          })
-        );
+        const pickr = this.createSettingsPickr({
+          isView: false,
+          el: pickerEl,
+          containerEl: pickerContainer,
+          swatches: [
+            '#4A5568',
+            '#D4AF37',
+            '#2D3033',
+            '#6D5846',
+            '#4C2A55',
+          ],
+          opacity: false,
+          defaultColor: this.plugin.settings.toolbarIconColor,
+        });
         this.pickrs.push(pickr);
         this.setupPickrEvents(pickr, 'toolbarIconColor', 'icon-color');
+        this.ensurePickrDismissListeners();
       });
     new Setting(toolbarContainer)
       .setName(t("Toolbar Icon Size"))
@@ -1136,7 +1863,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             const activeStyle = this.plugin.positionStyle;
             const style =
-              (this.plugin.appearanceEditStyle as ToolbarStyleKey) ||
+              (this.plugin.appearanceEditStyle) ||
               (this.plugin.settings.positionStyle as ToolbarStyleKey) ||
               "top";
             const bucket = this.getAppearanceBucket(style);
@@ -1158,14 +1885,16 @@ export class editingToolbarSettingTab extends PluginSettingTab {
             this.triggerRefresh();
           });
       });
-    // 添加工具栏预览区域
-    const previewContainer = toolbarContainer.createDiv('toolbar-preview-container');
+    this.createToolbarPreview(toolbarContainer, editingStyle);
+  }
+
+  private createToolbarPreview(containerEl: HTMLElement, editingStyle: ToolbarStyleKey): void {
+    const appearanceBucket = this.getAppearanceBucket(editingStyle);
+    const previewContainer = containerEl.createDiv('toolbar-preview-container');
     previewContainer.addClass('toolbar-preview-section');
-    previewContainer.style.marginTop = '20px';
-    const previewLabel = previewContainer.createEl('h3', {
-    text: t(`Toolbar Preview (With a hypothetical command configuration.)`)
-    });
-    previewLabel.style.marginBottom = '10px';
+    previewContainer.setCssStyles({ marginTop: '20px' });
+    const previewLabel = new Setting(previewContainer).setName(t(`Toolbar Preview (With a hypothetical command configuration.)`)).setHeading().nameEl;
+    previewLabel.setCssStyles({ marginBottom: '10px' });
     // 创建预览工具栏 - 使用类似 generateMenu 的方式
     const wrapper = previewContainer.createDiv();
     wrapper.classList.add("preview-toolbar-wrapper");
@@ -1176,7 +1905,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
     editingToolbar.setAttribute("id", "editingToolbarModalBar");
     // Use the per-style aesthetic if set; fall back to the global one
     const previewAestheticStyle =
-      (appearanceBucket.aestheticStyle as string) ??
+      (appearanceBucket.aestheticStyle) ??
       this.plugin.settings.aestheticStyle ??
       "default";
     this.applyAestheticStyle(
@@ -1188,10 +1917,10 @@ export class editingToolbarSettingTab extends PluginSettingTab {
     if (editingStyle === "fixed") {
       const icon = this.plugin.settings.toolbarIconSize || 18;
       const cols = this.plugin.settings.cMenuNumRows || 6;
-      editingToolbar.style.display = "grid";
+      editingToolbar.setCssStyles({ display: "grid" });
       editingToolbar.style.gridTemplateColumns = `repeat(${cols}, ${icon + 10}px)`;
       editingToolbar.style.gap = `${Math.max((icon - 18) / 4, 2)}px`;
-      editingToolbar.style.margin = "0 auto";  // centers the grid like top/following
+      editingToolbar.setCssStyles({ margin: "0 auto" });  // centers the grid like top/following
     }
     // 定义预览工具栏的命令
     const previewCommands = [
@@ -1264,7 +1993,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       const button = new ButtonComponent(editingToolbar);
       button.setClass("editingToolbarCommandItem");
       button.buttonEl.classList.add("preview-button");
-      button.setTooltip(t(item.name as any));
+      button.setTooltip(t(item.name));
 
       // 设置图标
       if (item.icon) {
@@ -1301,34 +2030,771 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       svg.style.height = `${size}px`;
     });
   }
-  private createCommandList(containerEl: HTMLElement): void {
-    // 根据编辑的配置获取对应的命令列表
-    let commandsToEdit: Command[] = [];
+  private getCommandsToEdit(): Command[] {
+    if (!this.plugin.settings.enableMultipleConfig) {
+      return this.plugin.settings.menuCommands;
+    }
+
+    switch (this.currentEditingConfig) {
+      case 'mobile':
+        return this.plugin.settings.mobileCommands;
+      case 'following':
+        return this.plugin.settings.followingCommands;
+      case 'top':
+        return this.plugin.settings.topCommands;
+      case 'fixed':
+        return this.plugin.settings.fixedCommands;
+      default:
+        return this.plugin.settings.menuCommands;
+    }
+  }
+
+  private createDeclarativeCommandListDefinition(): DeclarativeSettingsNode {
+    const commands = this.getCommandsToEdit();
+
+    return {
+      type: 'list',
+      heading: t('Editing Toolbar Commands'),
+      cls: 'editingToolbarSettingsTabsContainer editing-toolbar-native-command-list',
+      items: commands.map((command, index) => ({
+        name: this.getCommandDefinitionName(command, index, commands),
+        aliases: this.getCommandSearchAliases(command),
+        render: (setting: Setting) => this.renderDeclarativeCommand(setting, command, index),
+      })),
+    };
+  }
+
+  private getCommandDefinitionName(
+    command: Command,
+    index: number,
+    commands: Command[]
+  ): string {
+    const localizedName = this.getLocalizedCommandName(command.name);
+    const hasDuplicateName = commands.some((candidate, candidateIndex) => (
+      candidateIndex !== index
+      && this.getLocalizedCommandName(candidate.name) === localizedName
+    ));
+    return hasDuplicateName ? `${localizedName} (${command.id})` : localizedName;
+  }
+
+  private getCommandSearchAliases(command: Command): string[] {
+    const aliases = [command.id, this.getLocalizedCommandName(command.name)];
+    if ('SubmenuCommands' in command) {
+      (command.SubmenuCommands || []).forEach((subCommand) => {
+        aliases.push(subCommand.id, this.getLocalizedCommandName(subCommand.name));
+      });
+    }
+    return aliases.filter((alias): alias is string => Boolean(alias));
+  }
+
+  private createDeclarativeCommandPageDefinitions(): DeclarativeSettingsNode[] {
+    const definitions: DeclarativeSettingsNode[] = [];
+
     if (this.plugin.settings.enableMultipleConfig) {
-      switch (this.currentEditingConfig) {
-        case 'mobile':
-          commandsToEdit = this.plugin.settings.mobileCommands;
-          break;
-        case 'following':
-          commandsToEdit = this.plugin.settings.followingCommands;
-          break;
-        case 'top':
-          commandsToEdit = this.plugin.settings.topCommands;
-          break;
-        case 'fixed':
-          commandsToEdit = this.plugin.settings.fixedCommands;
-          break;
-        default:
-          commandsToEdit = this.plugin.settings.menuCommands;
+      definitions.push({
+        name: t('Current Configuration'),
+        aliases: [
+          t('Toolbar Commands'),
+          t('Top Style'),
+          t('Fixed Style'),
+          t('Following Style'),
+          t('Mobile Style'),
+        ],
+        desc: t('Switch between different command configurations.'),
+        render: (setting: Setting) => this.renderDeclarativeConfigurationSetting(setting),
+      });
+      definitions.push({
+        name: t('Import From'),
+        aliases: [t('Import'), t('Copy commands from another style configuration.')],
+        desc: t('Copy commands from another style configuration.'),
+        render: (setting: Setting) => this.renderDeclarativeImportSetting(setting),
+      });
+      definitions.push({
+        name: t('One-click Clear'),
+        aliases: [t('One-click Clear'), t('Remove all commands from this configuration.')],
+        desc: t('Remove all commands from this configuration.'),
+        render: (setting: Setting) => this.renderDeclarativeClearSetting(setting),
+      });
+    } else {
+      definitions.push({
+        name: t('One-click Clear'),
+        aliases: [t('Clear'), t('Remove all commands from this configuration.')],
+        desc: t('Remove all commands from this configuration.'),
+        render: (setting: Setting) => this.renderDeclarativeClearSetting(setting),
+      });
+    }
+
+    definitions.push({
+      name: t('Editing Toolbar Commands'),
+      aliases: [t('Add'), t('Toolbar Commands')],
+      desc: t("Add a command onto Editing Toolbar from Obsidian's commands library. To reorder the commands, drag and drop the command items. To delete them, use the delete buttom to the right of the command item. Editing Toolbar will not automaticaly refresh after reordering commands. Use the refresh button above."),
+      render: (setting: Setting) => {
+        setting.addButton((button) => button
+          .setIcon('plus')
+          .setTooltip(t('Add'))
+          .onClick(() => {
+            new CommandPicker(this.plugin, this.currentEditingConfig).open();
+            this.triggerRefresh();
+          }));
+      },
+    });
+    definitions.push(this.createDeclarativeCommandListDefinition());
+    return definitions;
+  }
+
+  private renderDeclarativeConfigurationSetting(setting: Setting): void {
+    setting.addDropdown((dropdown) => {
+      dropdown.addOption('top', t('Top Style'));
+      dropdown.addOption('fixed', t('Fixed Style'));
+      dropdown.addOption('following', t('Following Style'));
+      if (this.plugin.settings.isLoadOnMobile) {
+        dropdown.addOption('mobile', t('Mobile Style'));
+      }
+      dropdown
+        .setValue(this.currentEditingConfig)
+        .onChange((value) => {
+          this.currentEditingConfig = value;
+          this.refreshSettings();
+        });
+    });
+  }
+
+  private renderDeclarativeImportSetting(setting: Setting): void {
+    setting.addDropdown((dropdown) => {
+      const options: Record<string, string> = {
+        'Main menu': 'Main Menu Commands',
+      };
+      if (this.currentEditingConfig !== 'following') options.following = t('Following Style');
+      if (this.currentEditingConfig !== 'top') options.top = t('Top Style');
+      if (this.currentEditingConfig !== 'fixed') options.fixed = t('Fixed Style');
+      if (this.currentEditingConfig !== 'mobile' && this.plugin.settings.isLoadOnMobile) {
+        options.mobile = t('Mobile Style');
+      }
+      dropdown.addOptions(options);
+      if (!(this.selectedImportSourceStyle in options)) {
+        this.selectedImportSourceStyle = Object.keys(options)[0];
+      }
+      dropdown
+        .setValue(this.selectedImportSourceStyle)
+        .onChange((value) => { this.selectedImportSourceStyle = value; });
+    });
+    setting.addButton((button) => button
+      .setIcon('arrow-right')
+      .setTooltip(t('Copy commands from selected style.'))
+      .onClick(() => this.importCommandsFromSelectedStyle()));
+  }
+
+  private async importCommandsFromSelectedStyle(): Promise<void> {
+    const sourceCommands = this.getCommandsArrayByType(this.selectedImportSourceStyle);
+    if (!sourceCommands || sourceCommands.length === 0) {
+      new Notice('The selected style has no commands to import.');
+      return;
+    }
+
+    const targetStyle = this.currentEditingConfig;
+    ConfirmModal.show(this.app, {
+      message: `Import commands from "${this.selectedImportSourceStyle}" to "${targetStyle}" ${t('configuration')}?`,
+      onConfirm: async () => {
+        this.plugin.updateCurrentCommands([...sourceCommands], targetStyle);
+        await this.plugin.saveSettings();
+        new Notice(`Commands imported successfully from "${this.selectedImportSourceStyle}" to "${targetStyle}" ${t('configuration')}`);
+        this.refreshSettings();
+      },
+    });
+  }
+
+  private renderDeclarativeClearSetting(setting: Setting): void {
+    setting.addButton((button) => button
+      .setButtonText(t('Clear'))
+      .setWarning()
+      .setTooltip(t('Remove all commands from this configuration.'))
+      .onClick(() => {
+        ConfirmModal.show(this.app, {
+          message: t('Are you sure you want to clear all commands under the current style?'),
+          onConfirm: async () => {
+            this.plugin.updateCurrentCommands([], this.currentEditingConfig);
+            await this.plugin.saveSettings();
+            new Notice(t('All commands have been removed.'));
+            this.refreshSettings();
+          },
+        });
+      }));
+  }
+
+  private renderDeclarativeCommand(
+    setting: Setting,
+    command: Command,
+    commandIndex: number,
+  ): () => void {
+    const previousCleanup = this.declarativeCommandCleanups.get(setting.settingEl);
+    previousCleanup?.();
+    this.removeStaleDeclarativeSubmenus(setting.settingEl);
+
+    const commands = this.getCommandsToEdit();
+    this.removeTrackedSubmenuContainer(command);
+    setting.setClass('editingToolbarCommandItem');
+    this.setDeclarativeCommandName(
+      setting,
+      this.getLocalizedCommandName(command.name),
+      this.getCommandSettingKey(command, commandIndex),
+    );
+
+    const listEl = setting.settingEl.parentElement;
+    const cleanupListDrop = listEl
+      ? this.setupCommandDropContainer(listEl, commands, false)
+      : (): void => undefined;
+    const cleanupDragRow = this.setupCommandDragRow(
+      setting.settingEl,
+      command,
+      commands,
+      false
+    );
+    let cleanupSubmenu: () => void = () => undefined;
+    let submenuContainer: HTMLElement | null = null;
+
+    setting.addButton((iconButton) => {
+      iconButton
+        .setClass('editingToolbarSettingsIcon')
+        .onClick(() => {
+          new ChooseFromIconList(this.plugin, command, false, null, this.currentEditingConfig).open();
+        });
+      checkHtml(command.icon)
+        ? safeSetInnerHTML(iconButton.buttonEl, command.icon)
+        : iconButton.setIcon(command.icon);
+    });
+
+    setting.addButton((changeNameButton) => {
+      changeNameButton
+        .setIcon('pencil')
+        .setTooltip(t('Change Command Name'))
+        .setClass('editingToolbarSettingsButton')
+        .onClick(() => {
+          new ChangeCmdname(this.app, this.plugin, command, false, this.currentEditingConfig).open();
+        });
+    });
+
+    if ('SubmenuCommands' in command) {
+      setting.setClass('editingToolbarCommandsubItem');
+      setting.addDropdown((dropdown) => {
+        dropdown
+          .addOption('submenu', t('Button Submenu'))
+          .addOption('dropdown', t('Dropdown Menu'))
+          .setValue(command.menuType || 'submenu')
+          .onChange(async (value: 'submenu' | 'dropdown') => {
+            command.menuType = value;
+            await this.plugin.saveSettings();
+            this.triggerRefresh();
+          });
+        dropdown.selectEl.addClass('editingToolbarMenuTypeDropdown');
+      });
+
+      submenuContainer = setting.settingEl.createDiv({
+        cls: 'editingToolbarSettingsTabsContainer_sub editing-toolbar-declarative-submenu',
+      });
+      this.declarativeSubmenuContainers.set(command, submenuContainer);
+      cleanupSubmenu = this.renderDeclarativeSubmenu(submenuContainer, command);
+    } else {
+      if (command.id === 'editingToolbar-Divider-Line') {
+        setting.setClass('editingToolbar-Divider-Line');
+      }
+
+      setting.addButton((addSubmenuButton) => {
+        addSubmenuButton
+          .setIcon('editingToolbarSub')
+          .setTooltip(t('Add Submenu'))
+          .setClass('editingToolbarSettingsButton')
+          .setClass('editingToolbarSettingsButtonaddsub')
+          .onClick(async () => {
+            const index = commands.indexOf(command);
+            const submenuCommand: SubmenuCommand = {
+              id: 'SubmenuCommands-' + GenNonDuplicateID(1),
+              name: 'submenu',
+              icon: 'remix-Filter3Line',
+              SubmenuCommands: [],
+            };
+            commands.splice(index + 1, 0, submenuCommand);
+            this.plugin.updateCurrentCommands(commands, this.currentEditingConfig);
+            await this.plugin.saveSettings();
+            this.triggerRefresh();
+            this.refreshSettings();
+          });
+      });
+
+      setting.addButton((addSeparatorButton) => {
+        addSeparatorButton
+          .setIcon('vertical-split')
+          .setTooltip(t('Add Separator'))
+          .setClass('editingToolbarSettingsButton')
+          .setClass('editingToolbarSettingsButtonaddsub')
+          .onClick(async () => {
+            const index = commands.indexOf(command);
+            commands.splice(index + 1, 0, {
+              id: 'editingToolbar-Divider-Line',
+              name: t('Vertical Split'),
+              icon: 'vertical-split',
+            });
+            this.plugin.updateCurrentCommands(commands, this.currentEditingConfig);
+            await this.plugin.saveSettings();
+            this.triggerRefresh();
+            this.refreshSettings();
+          });
+      });
+    }
+
+    setting.addButton((deleteButton) => this.createDeleteButton(deleteButton, async () => {
+      commands.remove(command);
+      this.plugin.updateCurrentCommands(commands, this.currentEditingConfig);
+      await this.plugin.saveSettings();
+      this.triggerRefresh();
+      this.refreshSettings();
+    }));
+
+    const cleanup = () => {
+      cleanupSubmenu();
+      cleanupDragRow();
+      cleanupListDrop();
+      submenuContainer?.remove();
+      if (submenuContainer && this.declarativeSubmenuContainers.get(command) === submenuContainer) {
+        this.declarativeSubmenuContainers.delete(command);
+      }
+      if (this.declarativeCommandCleanups.get(setting.settingEl) === cleanup) {
+        this.declarativeCommandCleanups.delete(setting.settingEl);
+      }
+    };
+    this.declarativeCommandCleanups.set(setting.settingEl, cleanup);
+    return cleanup;
+  }
+
+  private renderDeclarativeSubmenu(containerEl: HTMLElement, submenu: Command): () => void {
+    this.declarativeSubmenuCleanups.get(containerEl)?.();
+
+    const submenuCommands = submenu.SubmenuCommands
+      ?? (submenu.SubmenuCommands = []);
+    const cleanups = [
+      this.setupCommandDropContainer(containerEl, submenuCommands, true),
+    ];
+    const createdRows: HTMLElement[] = [];
+
+    submenuCommands.forEach((subCommand: Command, subCommandIndex: number) => {
+      const subSetting = new Setting(containerEl)
+        .setClass('editingToolbarCommandItem')
+        .addButton((iconButton) => {
+          iconButton
+            .setClass('editingToolbarSettingsIcon')
+            .onClick(() => {
+              new ChooseFromIconList(this.plugin, subCommand, true, null, this.currentEditingConfig).open();
+            });
+          checkHtml(subCommand.icon)
+            ? safeSetInnerHTML(iconButton.buttonEl, subCommand.icon)
+            : iconButton.setIcon(subCommand.icon);
+        })
+        .addButton((changeNameButton) => {
+          changeNameButton
+            .setIcon('pencil')
+            .setTooltip(t('Change Command Name'))
+            .setClass('editingToolbarSettingsButton')
+            .onClick(() => {
+              new ChangeCmdname(this.app, this.plugin, subCommand, true, this.currentEditingConfig).open();
+            });
+        })
+        .addButton((deleteButton) => this.createDeleteButton(deleteButton, async () => {
+          submenuCommands.remove(subCommand);
+          await this.plugin.saveSettings();
+          this.triggerRefresh();
+          this.refreshSettings();
+        }));
+      this.setDeclarativeCommandName(
+        subSetting,
+        this.getLocalizedCommandName(subCommand.name),
+        this.getCommandSettingKey(subCommand, subCommandIndex, submenu.id),
+      );
+      createdRows.push(subSetting.settingEl);
+      cleanups.push(this.setupCommandDragRow(
+        subSetting.settingEl,
+        subCommand,
+        submenuCommands,
+        true
+      ));
+    });
+
+    const cleanup = () => {
+      cleanups.forEach((itemCleanup) => itemCleanup());
+      createdRows.forEach((rowEl) => {
+        if (rowEl.parentElement === containerEl) {
+          rowEl.remove();
+        }
+        const dragController = this.commandDragControllers.get(rowEl);
+        if (dragController) {
+          this.abortCommandEventController(
+            rowEl,
+            dragController,
+            this.commandDragControllers,
+          );
+        }
+      });
+      if (this.declarativeSubmenuCleanups.get(containerEl) === cleanup) {
+        this.declarativeSubmenuCleanups.delete(containerEl);
+      }
+    };
+    this.declarativeSubmenuCleanups.set(containerEl, cleanup);
+    return cleanup;
+  }
+
+  private removeStaleDeclarativeSubmenus(settingEl: HTMLElement): void {
+    settingEl
+      .querySelectorAll<HTMLElement>('.editingToolbarSettingsTabsContainer_sub')
+      .forEach((containerEl) => {
+        this.declarativeSubmenuCleanups.get(containerEl)?.();
+        const dropController = this.commandDropControllers.get(containerEl);
+        if (dropController) {
+          this.abortCommandEventController(
+            containerEl,
+            dropController,
+            this.commandDropControllers,
+          );
+        }
+
+        containerEl
+          .querySelectorAll<HTMLElement>('.editingToolbarCommandItem')
+          .forEach((rowEl) => {
+            const dragController = this.commandDragControllers.get(rowEl);
+            if (dragController) {
+              this.abortCommandEventController(
+                rowEl,
+                dragController,
+                this.commandDragControllers,
+              );
+            }
+          });
+        containerEl.remove();
+      });
+  }
+
+  private removeTrackedSubmenuContainer(command: Command): void {
+    const containerEl = this.declarativeSubmenuContainers.get(command);
+    if (!containerEl) return;
+
+    this.declarativeSubmenuCleanups.get(containerEl)?.();
+    containerEl.remove();
+    if (this.declarativeSubmenuContainers.get(command) === containerEl) {
+      this.declarativeSubmenuContainers.delete(command);
+    }
+  }
+
+  private setupCommandDragRow(
+    rowEl: HTMLElement,
+    command: Command,
+    source: Command[],
+    isSubmenuTarget: boolean
+  ): () => void {
+    const controller = this.createCommandEventController(
+      rowEl,
+      this.commandDragControllers
+    );
+    const listenerOptions = { signal: controller.signal };
+    rowEl.draggable = true;
+
+    rowEl.addEventListener('dragstart', (event) => {
+      const target = event.target as HTMLElement | null;
+      const isInteractive = target?.closest(
+        'button, input, select, textarea, a, [contenteditable="true"]'
+      );
+      const isNestedArea = target?.closest('.editingToolbarSettingsTabsContainer_sub');
+      if (isInteractive || (!isSubmenuTarget && isNestedArea)) {
+        event.preventDefault();
+        return;
+      }
+
+      event.stopPropagation();
+      this.clearCommandDragState(rowEl.ownerDocument);
+      this.commandDragState = { command, source, sourceEl: rowEl };
+      rowEl.addClass('is-command-dragging');
+
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', command.id);
+      }
+    }, listenerOptions);
+
+    rowEl.addEventListener('dragover', (event) => {
+      if (!this.canDropCommand(isSubmenuTarget)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+
+      this.clearCommandDropFeedback(rowEl.ownerDocument);
+      const rect = rowEl.getBoundingClientRect();
+      rowEl.addClass(event.clientY < rect.top + rect.height / 2
+        ? 'is-command-drop-before'
+        : 'is-command-drop-after');
+    }, listenerOptions);
+
+    rowEl.addEventListener('dragleave', (event) => {
+      const nextTarget = event.relatedTarget as Node | null;
+      if (!nextTarget || !rowEl.contains(nextTarget)) {
+        rowEl.removeClass('is-command-drop-before', 'is-command-drop-after');
+      }
+    }, listenerOptions);
+
+    rowEl.addEventListener('drop', (event) => {
+      if (!this.canDropCommand(isSubmenuTarget)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = rowEl.getBoundingClientRect();
+      const targetCommand = source.find((item) => item === command);
+      if (!targetCommand) {
+        this.clearCommandDragState(rowEl.ownerDocument);
+        return;
+      }
+
+      const targetIndex = source.indexOf(targetCommand)
+        + (event.clientY >= rect.top + rect.height / 2 ? 1 : 0);
+      void this.completeCommandDrop(source, targetIndex, rowEl.ownerDocument);
+    }, listenerOptions);
+
+    rowEl.addEventListener('dragend', () => {
+      this.clearCommandDragState(rowEl.ownerDocument);
+    }, listenerOptions);
+
+    return () => this.abortCommandEventController(
+      rowEl,
+      controller,
+      this.commandDragControllers
+    );
+  }
+
+  private setupCommandDropContainer(
+    containerEl: HTMLElement,
+    target: Command[],
+    isSubmenuTarget: boolean
+  ): () => void {
+    const controller = this.createCommandEventController(
+      containerEl,
+      this.commandDropControllers
+    );
+    const listenerOptions = { signal: controller.signal };
+    containerEl.toggleClass('editing-toolbar-command-drop-list', !isSubmenuTarget);
+
+    containerEl.addEventListener('dragover', (event) => {
+      if (!this.canDropCommand(isSubmenuTarget)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      this.clearCommandDropFeedback(containerEl.ownerDocument);
+      containerEl.addClass('is-command-drop-inside');
+    }, listenerOptions);
+
+    containerEl.addEventListener('dragleave', (event) => {
+      const nextTarget = event.relatedTarget as Node | null;
+      if (!nextTarget || !containerEl.contains(nextTarget)) {
+        containerEl.removeClass('is-command-drop-inside');
+      }
+    }, listenerOptions);
+
+    containerEl.addEventListener('drop', (event) => {
+      if (!this.canDropCommand(isSubmenuTarget)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      void this.completeCommandDrop(target, target.length, containerEl.ownerDocument);
+    }, listenerOptions);
+
+    return () => this.abortCommandEventController(
+      containerEl,
+      controller,
+      this.commandDropControllers
+    );
+  }
+
+  private createCommandEventController(
+    element: HTMLElement,
+    controllers: WeakMap<HTMLElement, AbortController>
+  ): AbortController {
+    const previousController = controllers.get(element);
+    if (previousController) {
+      previousController.abort();
+      this.commandEventControllers.delete(previousController);
+    }
+
+    const AbortControllerCtor = element.ownerDocument.defaultView?.AbortController
+      ?? AbortController;
+    const controller = new AbortControllerCtor();
+    controllers.set(element, controller);
+    this.commandEventControllers.add(controller);
+    return controller;
+  }
+
+  private abortCommandEventController(
+    element: HTMLElement,
+    controller: AbortController,
+    controllers: WeakMap<HTMLElement, AbortController>
+  ): void {
+    controller.abort();
+    this.commandEventControllers.delete(controller);
+    if (controllers.get(element) === controller) {
+      controllers.delete(element);
+    }
+  }
+
+  private canDropCommand(isSubmenuTarget: boolean): boolean {
+    const draggedCommand = this.commandDragState?.command;
+    if (!draggedCommand) return false;
+    return !isSubmenuTarget || !('SubmenuCommands' in draggedCommand);
+  }
+
+  private async completeCommandDrop(
+    target: Command[],
+    targetIndex: number,
+    ownerDocument: Document
+  ): Promise<void> {
+    const dragState = this.commandDragState;
+    if (!dragState) return;
+
+    const commands = this.getCommandsToEdit();
+    const isSameList = dragState.source === target;
+    let moved = false;
+
+    if (isSameList) {
+      moved = moveItemBetweenLists(dragState.source, target, dragState.command, targetIndex);
+      if (moved && dragState.command.id !== 'editingToolbar-Divider-Line') {
+        this.removeCommandReferences(commands, dragState.command.id, dragState.command);
       }
     } else {
-      commandsToEdit = this.plugin.settings.menuCommands;
+      // Remove the exact dragged object first. This also supports dividers,
+      // whose shared ID is intentionally allowed to occur more than once.
+      const sourceIndex = dragState.source.indexOf(dragState.command);
+      if (sourceIndex >= 0) {
+        dragState.source.splice(sourceIndex, 1);
+        moved = true;
+      }
+
+      if (moved && dragState.command.id !== 'editingToolbar-Divider-Line') {
+        // Ordinary commands must be unique across the complete command tree.
+        // Remove stale copies left by an earlier render before inserting the
+        // current object into its new list.
+        this.removeCommandReferences(commands, dragState.command.id);
+      }
+
+      if (moved) {
+        const insertIndex = Math.max(0, Math.min(targetIndex, target.length));
+        target.splice(insertIndex, 0, dragState.command);
+      }
     }
-    const editingToolbarCommandsContainer = containerEl.createEl("div", {
+
+    this.clearCommandDragState(ownerDocument);
+    if (!moved) return;
+
+    this.normalizeCommandTree(commands);
+    this.plugin.updateCurrentCommands(commands, this.currentEditingConfig);
+    await this.plugin.saveSettings();
+    // The settings event refreshes both the declarative page and the live
+    // toolbar. Avoid a second immediate render of the same list.
+    this.triggerRefresh();
+  }
+
+  private removeCommandReferences(
+    commands: Command[],
+    commandId: string,
+    keepCommand?: Command,
+  ): number {
+    if (!commandId || commandId === 'editingToolbar-Divider-Line') return 0;
+
+    let removed = 0;
+    for (let index = commands.length - 1; index >= 0; index -= 1) {
+      const command = commands[index] as Command & { SubmenuCommands?: Command[] };
+      if (command === keepCommand) continue;
+      if (command.id === commandId) {
+        commands.splice(index, 1);
+        removed += 1;
+        continue;
+      }
+
+      if (Array.isArray(command.SubmenuCommands)) {
+        removed += this.removeCommandReferences(command.SubmenuCommands, commandId, keepCommand);
+      }
+    }
+    return removed;
+  }
+
+  private normalizeCommandTree(commands: Command[]): void {
+    const seen = new Set<string>();
+    const normalizeList = (list: Command[]): void => {
+      for (let index = 0; index < list.length;) {
+        const command = list[index] as Command & { SubmenuCommands?: Command[] };
+        // Divider entries are intentionally repeatable; all other command IDs
+        // must occur exactly once in the current toolbar configuration.
+        const isDivider = command.id === 'editingToolbar-Divider-Line';
+        const isDuplicate = !isDivider && seen.has(command.id);
+        if (isDuplicate) {
+          list.splice(index, 1);
+          continue;
+        }
+
+        if (!isDivider) seen.add(command.id);
+        if (Array.isArray(command.SubmenuCommands)) {
+          normalizeList(command.SubmenuCommands);
+        }
+        index += 1;
+      }
+    };
+
+    normalizeList(commands);
+  }
+
+  private async refreshCustomGeminiModels(): Promise<void> {
+    const baseUrl = this.plugin.settings.ai.customModel.baseUrl.trim();
+
+    try {
+      const models = await this.plugin.aiManager.listCustomGeminiModels();
+      this.cachedCustomGeminiModels = models;
+      this.cachedCustomGeminiModelsBaseUrl = baseUrl;
+      this.cachedCustomGeminiModelsError = '';
+      if (models.length === 0) new Notice(t('No models found at this endpoint.'));
+    } catch (error) {
+      this.cachedCustomGeminiModels = [];
+      this.cachedCustomGeminiModelsBaseUrl = baseUrl;
+      this.cachedCustomGeminiModelsError = getAIErrorMessage(error);
+      new Notice(`${t('Failed to load models:')} ${this.cachedCustomGeminiModelsError}`);
+    }
+
+    this.refreshSettings();
+  }
+
+  private clearCommandDropFeedback(ownerDocument: Document): void {
+    ownerDocument
+      .querySelectorAll<HTMLElement>(
+        '.editing-toolbar-native-command-list .is-command-drop-before, ' +
+        '.editing-toolbar-native-command-list .is-command-drop-after, ' +
+        '.editing-toolbar-native-command-list .is-command-drop-inside'
+      )
+      .forEach((element) => element.removeClass(
+        'is-command-drop-before',
+        'is-command-drop-after',
+        'is-command-drop-inside'
+      ));
+  }
+
+  private clearCommandDragState(ownerDocument?: Document): void {
+    const dragDocument = ownerDocument || this.commandDragState?.sourceEl.ownerDocument;
+    if (dragDocument) {
+      this.clearCommandDropFeedback(dragDocument);
+      dragDocument
+        .querySelectorAll<HTMLElement>('.editing-toolbar-native-command-list .is-command-dragging')
+        .forEach((element) => element.removeClass('is-command-dragging'));
+    }
+    this.commandDragState = null;
+  }
+
+  private createCommandList(containerEl: HTMLElement): void {
+    const commandsToEdit = this.getCommandsToEdit();
+    const editingToolbarCommandsContainer = containerEl.createDiv({
       cls: "editingToolbarSettingsTabsContainer",
     });
     let dragele = "";
-    Sortable.create(editingToolbarCommandsContainer, {
+    this.sortables.push(Sortable.create(editingToolbarCommandsContainer, {
       group: "item",
       animation: 500,
       draggable: ".setting-item",
@@ -1337,7 +2803,9 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       dragClass: "sortable-drag",
       dragoverBubble: false,
       forceFallback: true,
-      fallbackOnBody: true,
+      // Settings can render in a separate window in Obsidian 1.13+. Keeping
+      // the fallback clone in this list avoids attaching it to the main window.
+      fallbackOnBody: false,
       swapThreshold: 0.7,
       fallbackClass: "sortable-fallback",
       easing: "cubic-bezier(1, 0, 0, 1)",
@@ -1378,14 +2846,14 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           } else {
             this.plugin.settings.menuCommands = arrayResult;
           }
-          this.plugin.saveSettings();
+          void this.plugin.saveSettings();
         }
         this.triggerRefresh();
       },
       onStart: function (evt) {
         dragele = evt.item.className;
       },
-    });
+    }));
     // 使用getCurrentCommands获取当前命令配置
     const currentCommands = commandsToEdit;
     currentCommands.forEach((newCommand: Command, index: number) => {
@@ -1402,7 +2870,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
               .onClick(async () => {
                 new ChooseFromIconList(this.plugin, newCommand, false, null, this.currentEditingConfig).open();
               });
-            checkHtml(newCommand.icon) ? addicon.buttonEl.innerHTML = newCommand.icon : addicon.setIcon(newCommand.icon)
+            checkHtml(newCommand.icon) ? safeSetInnerHTML(addicon.buttonEl, newCommand.icon) : addicon.setIcon(newCommand.icon)
           })
           .addButton((changename) => {
             changename
@@ -1433,16 +2901,15 @@ export class editingToolbarSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             this.display();
             this.triggerRefresh();
-            console.log(`%cCommand '${newCommand.name}' was removed from editingToolbar`, "color: #989cab");
           }))
 
         if (newCommand.id == "editingToolbar-plugin:change-font-color") return;  //修改字体颜色指令单独处理
         if (newCommand.id == "editingToolbar-plugin:change-background-color") return;  //修改字体颜色指令单独处理
 
-        const editingToolbarCommandsContainer_sub = setting.settingEl.createEl("div", {
+        const editingToolbarCommandsContainer_sub = setting.settingEl.createDiv({
           cls: "editingToolbarSettingsTabsContainer_sub",
         });
-        Sortable.create(editingToolbarCommandsContainer_sub, {
+        this.sortables.push(Sortable.create(editingToolbarCommandsContainer_sub, {
           group: {
             name: "item",
             pull: true,
@@ -1458,7 +2925,8 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           chosenClass: "sortable-chosen",
           dragClass: "sortable-drag",
           dragoverBubble: false,
-          fallbackOnBody: true,
+          // See the parent list: the fallback clone must stay in this window.
+          fallbackOnBody: false,
           swapThreshold: 0.7,
           forceFallback: true,
           delay: 800,
@@ -1479,7 +2947,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
                 subresult.splice(command.newIndex, 0, removed);
                 // 使用updateCurrentCommands更新当前命令配置
                 this.plugin.updateCurrentCommands(arrayResult, this.currentEditingConfig);
-                this.plugin.saveSettings();
+                void this.plugin.saveSettings();
               }
             } else if (command.to.className === "editingToolbarSettingsTabsContainer") {
               // 从子菜单拖动到父菜单的逻辑
@@ -1508,7 +2976,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
               const [removed] = subresult.splice(command.oldIndex, 1);
               arrayResult.splice(command.newIndex, 0, removed);
               this.plugin.updateCurrentCommands(arrayResult, this.currentEditingConfig);
-              this.plugin.saveSettings();
+              void this.plugin.saveSettings();
             } else if (command.from.className === "editingToolbarSettingsTabsContainer") {
               // 从父菜单拖动到子菜单的逻辑
               const arrayResult = commandsToEdit;
@@ -1536,11 +3004,11 @@ export class editingToolbarSettingTab extends PluginSettingTab {
               const [removed] = arrayResult.splice(command.oldIndex, 1);
               subresult.splice(command.newIndex, 0, removed);
               this.plugin.updateCurrentCommands(arrayResult, this.currentEditingConfig);
-              this.plugin.saveSettings();
+              void this.plugin.saveSettings();
             }
             this.triggerRefresh();
           },
-        });
+        }));
         newCommand.SubmenuCommands.forEach((subCommand: Command) => {
           const subsetting = new Setting(editingToolbarCommandsContainer_sub)
           subsetting
@@ -1551,7 +3019,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
                 .onClick(async () => {
                   new ChooseFromIconList(this.plugin, subCommand, true, null, this.currentEditingConfig).open();
                 });
-              checkHtml(subCommand?.icon) ? addicon.buttonEl.innerHTML = subCommand.icon : addicon.setIcon(subCommand.icon)
+              checkHtml(subCommand?.icon) ? safeSetInnerHTML(addicon.buttonEl, subCommand.icon) : addicon.setIcon(subCommand.icon)
             })
             .setName(this.getLocalizedCommandName(subCommand.name))
             .addButton((changename) => {
@@ -1568,9 +3036,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
               await this.plugin.saveSettings();
               this.display();
               this.triggerRefresh();
-              console.log(`%cCommand '${newCommand.name}' was removed from editingToolbar`, "color: #989cab");
             }))
-          subsetting.nameEl;
         });
       } else {
         setting
@@ -1581,7 +3047,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
               .onClick(async () => {
                 new ChooseFromIconList(this.plugin, newCommand, false, null, this.currentEditingConfig).open();
               });
-            checkHtml(newCommand.icon) ? addicon.buttonEl.innerHTML = newCommand.icon : addicon.setIcon(newCommand.icon)
+            checkHtml(newCommand.icon) ? safeSetInnerHTML(addicon.buttonEl, newCommand.icon) : addicon.setIcon(newCommand.icon)
           })
         if (newCommand.id == "editingToolbar-Divider-Line") setting.setClass("editingToolbar-Divider-Line")
         setting
@@ -1617,7 +3083,6 @@ export class editingToolbarSettingTab extends PluginSettingTab {
                 await this.plugin.saveSettings();
                 this.display();
                 this.triggerRefresh();
-                console.log(`%cCommand '${submenuCommand.id}' add `, "color: #989cab");
               });
           })
           .addButton((addsubButton) => {
@@ -1645,32 +3110,91 @@ export class editingToolbarSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             this.display();
             this.triggerRefresh();
-            console.log(`%cCommand '${newCommand.name}' was removed from editingToolbar`, "color: #989cab");
           }))
       }
     });
   }
+  /**
+   * Pickr binds its "click outside" and Escape handling to the document it was
+   * loaded in. Since Obsidian 1.13 the settings can live in their own window,
+   * where those listeners never fire, so the same dismissal is bound to the
+   * document that actually hosts the settings UI.
+   */
+  private ensurePickrDismissListeners(): void {
+    const doc = this.containerEl?.ownerDocument;
+    if (!doc || this.pickrDismissListeners.has(doc)) return;
+
+    const mousedown = (event: MouseEvent): void => {
+      if (event.button !== 0) return;
+      const target = (event.target ?? null) as Node | null;
+      this.pickrs.forEach((pickr) => {
+        if (!pickr.isOpen()) return;
+        const root = pickr.getRoot() as { app?: HTMLElement; button?: HTMLElement } | null;
+        const app = root?.app;
+        const button = root?.button;
+        if (!!app && !!target && app.contains(target)) return;
+        if (!!button && !!target && button.contains(target)) return;
+        pickr.hide();
+      });
+    };
+
+    doc.addEventListener('mousedown', mousedown, true);
+    this.pickrDismissListeners.set(doc, { mousedown });
+  }
+
+  private removePickrDismissListeners(): void {
+    this.pickrDismissListeners.forEach((handlers, doc) => {
+      doc.removeEventListener('mousedown', handlers.mousedown, true);
+    });
+    this.pickrDismissListeners.clear();
+  }
+
   private setupPickrEvents(
-    pickr: any,
+    pickr: Pickr,
     settingKey: string,
     cssProperty: string
   ) {
-    pickr.on("save", (color: any) => {
+    const closePickr = (): void => {
+      // Hide first: saving a toolbar colour re-renders the tab and destroys the
+      // pickr instance, and a destroyed instance cannot close its popup.
+      if (this.pickrs.includes(pickr) && pickr.isOpen()) {
+        pickr.hide();
+      }
+    };
+
+    // Pickr only emits "cancel" without closing itself, and its save button
+    // never closes when the colour is applied, so both are closed here.
+    pickr.on("cancel", () => closePickr());
+
+    pickr.on("save", (color: Pickr.HSVaColor) => {
+      closePickr();
+      // The picker's "Clear" button emits save without a colour.
+      if (!color) return;
       const hexColor = color.toHEXA().toString();
   
       const activeStyle = this.plugin.positionStyle;
       const editingStyle =
-        (this.plugin.appearanceEditStyle as ToolbarStyleKey) ||
-        (this.plugin.settings.positionStyle as ToolbarStyleKey) ||
-        activeStyle ||
+        toToolbarStyleKey(this.plugin.appearanceEditStyle) ??
+        toToolbarStyleKey(this.plugin.settings.positionStyle) ??
+        toToolbarStyleKey(activeStyle) ??
         "top";
       // For the main toolbar colour fields, use the per-style bucket.
       if (
         settingKey === "toolbarBackgroundColor" ||
         settingKey === "toolbarIconColor"
       ) {
-        const bucket = this.getAppearanceBucket(editingStyle as ToolbarStyleKey);
-        (bucket as any)[settingKey] = hexColor;
+        const bucket = this.getAppearanceBucket(editingStyle);
+        // pickr 在某些环境（如设置窗口不产帧）下会重放初始化流程并发出
+        // 未改色的 save；无条件重渲染会陷入
+        // save → display() → 重建 pickr → save 的死循环，把下拉框和整页
+        // 设置每秒重建多次。颜色没变时直接忽略。
+        const currentColor = (
+          bucket[settingKey] ?? this.plugin.settings[settingKey] ?? ""
+        ).toLowerCase();
+        if (currentColor === hexColor.toLowerCase()) {
+          return;
+        }
+        bucket[settingKey] = hexColor;
         // Only push CSS variables if we're editing the active style
         if (activeStyle === editingStyle) {
           document.documentElement.style.setProperty(
@@ -1688,9 +3212,15 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         this.triggerRefresh();
       } else {
         // All other keys (custom_bgX/custom_fcX) stay as global settings
-        (this.plugin.settings as any)[settingKey] = hexColor;
+        (this.plugin.settings as unknown as Record<string, string>)[settingKey] = hexColor;
+        // The toolbar palette bakes these five colours into its cells when the
+        // toolbar is built, so the toolbar has to be rebuilt for the new colour
+        // to show up in the colour picker. Rebuilding only the toolbar keeps the
+        // settings page (and the pickers on it) untouched.
+        selfDestruct(this.plugin);
+        editingToolbarPopover(this.app, this.plugin);
       }
-      this.plugin.saveSettings();
+      void this.plugin.saveSettings();
     });
   }
   private destroyPickrs() {
@@ -1701,12 +3231,28 @@ export class editingToolbarSettingTab extends PluginSettingTab {
     });
     this.pickrs = [];
   }
-  hide(): void {
+
+  private destroySortables(): void {
+    this.sortables.forEach((sortable) => sortable.destroy());
+    this.sortables = [];
+  }
+
+  private destroySettingsResources(): void {
+    this.clearCommandDragState();
+    this.commandEventControllers.forEach((controller) => controller.abort());
+    this.commandEventControllers.clear();
+    this.removePickrDismissListeners();
     this.destroyPickrs();
+    this.destroySortables();
+  }
+
+  hide(): void {
+    this.destroySettingsResources();
     this.triggerRefresh();
+    super.hide();
   }
   // 添加一个辅助方法用于从配置中删除命令
-  private removeCommandFromConfig(commands: any[], commandId: string) {
+  private removeCommandFromConfig(commands: Command[], commandId: string) {
     if (!commands) return;
     // 删除主菜单中的命令
     for (let i = commands.length - 1; i >= 0; i--) {
@@ -1738,7 +3284,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           return model;
       }
     };
-    const addPkmerModelOptions = (dropdown: any) => {
+    const addPkmerModelOptions = (dropdown: DropdownComponent) => {
       PKMER_MODEL_OPTIONS.forEach((option) => {
         dropdown.addOption(option.value, getPkmerModelLabel(option.value));
       });
@@ -1772,7 +3318,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
 
       if (options.toggle) {
         const { toggle } = options;
-        const toggleEl = header.createEl('div', { cls: 'editing-toolbar-ai-card-toggle checkbox-container' });
+        const toggleEl = header.createDiv({ cls: 'editing-toolbar-ai-card-toggle checkbox-container' });
         if (toggle.value) toggleEl.addClass('is-enabled');
         toggleEl.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1796,6 +3342,30 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         header.createDiv({ cls: 'editing-toolbar-ai-card-badge', text: options.badge });
       }
 
+      if (options.collapsible) {
+        const chevronEl = header.createDiv({ cls: 'editing-toolbar-ai-card-chevron', text: '▾' });
+        chevronEl.setAttr('aria-hidden', 'true');
+        chevronEl.setCssStyles({ flexShrink: '0' });
+        chevronEl.setCssStyles({ width: '24px' });
+        chevronEl.setCssStyles({ height: '24px' });
+        chevronEl.setCssStyles({ borderRadius: '999px' });
+        chevronEl.setCssStyles({ display: 'flex' });
+        chevronEl.setCssStyles({ alignItems: 'center' });
+        chevronEl.setCssStyles({ justifyContent: 'center' });
+        chevronEl.setCssStyles({ color: 'var(--text-muted)' });
+        chevronEl.setCssStyles({ background: 'var(--background-modifier-hover)' });
+        chevronEl.setCssStyles({ fontSize: '18px' });
+        chevronEl.setCssStyles({ fontWeight: '700' });
+        chevronEl.setCssStyles({ lineHeight: '1' });
+        chevronEl.setCssStyles({ transition: 'transform 0.16s ease, background-color 0.16s ease, color 0.16s ease' });
+
+        const updateChevron = () => {
+          chevronEl.style.transform = (root as HTMLDetailsElement).open ? 'rotate(180deg)' : 'rotate(0deg)';
+        };
+        updateChevron();
+        root.addEventListener('toggle', updateChevron);
+      }
+
       return root.createDiv('editing-toolbar-ai-card-body');
     };
 
@@ -1804,7 +3374,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       desc: t('Enable AI editor features such as inline completion and selection rewrite.'),
       toggle: {
         value: this.plugin.settings.ai.enabled,
-        onChange: async (value) => {
+        onChange: async (value) => {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
           if (value) {
             await this.plugin.aiManager.requestEnableAIWithConsent('settings');
           } else {
@@ -1815,6 +3385,18 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       },
     });
 
+    new Setting(basicBody)
+      .setName(t('Show AI Tools in Context Menu'))
+      .setDesc(t('Show the AI Tools submenu in the editor right-click menu. Re-enabling AI Editor turns this on again.'))
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.settings.ai.showAIContextMenu !== false)
+        .onChange(async (value) => {
+          this.plugin.settings.ai.showAIContextMenu = value;
+          await this.plugin.saveSettings();
+          this.plugin.refreshAIAvailability();
+          this.display();
+        }));
+
     if (aiEnabled) {
       const accountBody = createCard({
         title: t('PKMer AI'),
@@ -1822,11 +3404,11 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         badge: this.plugin.settings.ai.pkmer.userInfo ? t('Logged in') : t('Not logged in'),
       });
 
-      const pkmerAccountDesc = document.createDocumentFragment();
+      const pkmerAccountDesc = createFragment();
       pkmerAccountDesc.append(this.plugin.aiManager.getPKMerStatusText());
       if (this.plugin.settings.ai.pkmer.userInfo?.ai_quota?.quota !== undefined) {
         pkmerAccountDesc.append(' ');
-        const quotaLink = document.createElement('a');
+        const quotaLink = createEl('a');
         quotaLink.textContent = t('More Quota');
         quotaLink.href = getPKMerAIQuotaUrl();
         quotaLink.target = '_blank';
@@ -1852,7 +3434,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         })
         .addButton((button) => {
           if (!this.plugin.settings.ai.pkmer.userInfo) {
-            button.buttonEl.style.display = 'none';
+            button.buttonEl.setCssStyles({ display: 'none' });
             return;
           }
 
@@ -1885,7 +3467,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         desc: t('Configure inline completion and rewrite after your AI provider is ready.'),
         toggle: {
           value: this.plugin.settings.ai.enableInlineCompletion,
-          onChange: async (value) => {
+          onChange: async (value) => {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
             this.plugin.settings.ai.enableInlineCompletion = value;
             await this.plugin.saveSettings();
             this.display();
@@ -1949,7 +3531,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
             { value: 'manual', label: t('Manual') },
           ],
           value: pkmerModelRoutingMode,
-          onChange: async (value) => {
+          onChange: async (value) => {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
             this.plugin.settings.ai.pkmerModelRouting.mode = value as 'smart' | 'manual';
             await this.plugin.saveSettings();
             this.display();
@@ -2024,7 +3606,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         desc: t('Custom model is used automatically when PKMer AI is unavailable.'),
         toggle: {
           value: this.plugin.settings.ai.enableCustomModel,
-          onChange: async (value) => {
+          onChange: async (value) => {  // eslint-disable-line @typescript-eslint/no-misused-promises -- intentional
             this.plugin.settings.ai.enableCustomModel = value;
             await this.plugin.saveSettings();
             this.display();
@@ -2033,8 +3615,9 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       });
 
       if (customModelEnabled) {
-        const customApiFormat = (this.plugin.settings.ai.customModel.apiFormat ?? 'openai-compatible') as CustomModelApiFormat;
+        const customApiFormat = (this.plugin.settings.ai.customModel.apiFormat ?? 'openai-compatible');
         const isOllamaFormat = customApiFormat === 'ollama';
+        const isGeminiFormat = customApiFormat === 'gemini';
         const customModelBaseUrl = this.plugin.settings.ai.customModel.baseUrl.trim();
         const cachedOllamaModels = isOllamaFormat && this.cachedCustomOllamaModelsBaseUrl === customModelBaseUrl
           ? this.cachedCustomOllamaModels
@@ -2047,16 +3630,17 @@ export class editingToolbarSettingTab extends PluginSettingTab {
             ? t('Stored securely in Obsidian secret storage.')
             : t('Will be stored securely in Obsidian secret storage.'))
           : t('Current Obsidian version does not support secure secret storage.');
-        const apiKeyDesc = isOllamaFormat
-          ? `${t('Optional for Ollama. Leave empty unless your gateway requires authentication.')} ${secureStorageDesc}`.trim()
-          : secureStorageDesc;
+        const apiKeyDesc = `${isGeminiFormat
+          ? t('Required for the native Gemini API.')
+          : t('Optional. Leave empty unless your server requires authentication.')} ${secureStorageDesc}`.trim();
 
         new Setting(customBody)
           .setName(t('Custom API Format'))
-          .setDesc(t('Choose whether the custom model uses an OpenAI-compatible endpoint or the native Ollama API.'))
+          .setDesc(t('Choose whether the custom model uses an OpenAI-compatible endpoint, the native Gemini API, or the native Ollama API.'))
           .addDropdown((dropdown) => {
             dropdown
               .addOption('openai-compatible', t('OpenAI-compatible'))
+              .addOption('gemini', t('Gemini'))
               .addOption('ollama', t('Ollama'))
               .setValue(customApiFormat)
               .onChange(async (value) => {
@@ -2070,19 +3654,98 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           .setName(t('Custom API Base URL'))
           .setDesc(isOllamaFormat
             ? t('Native Ollama endpoint. The root URL, /api, /api/chat, or /api/generate are all supported.')
-            : t('OpenAI-compatible endpoint for your own provider.'))
+            : isGeminiFormat
+              ? t('Gemini API base URL. Example: https://generativelanguage.googleapis.com/v1beta')
+              : `${t('OpenAI-compatible endpoint for your own provider.')} ${t('DeepSeek example: https://api.deepseek.com')} ${t('For DeepSeek, do not append /anthropic in OpenAI-compatible mode.')}`)
           .addText((text) => {
-            text.setPlaceholder(isOllamaFormat ? 'http://127.0.0.1:11434' : 'https://api.openai.com').setValue(this.plugin.settings.ai.customModel.baseUrl).onChange(async (value) => {
+            const placeholder = isOllamaFormat
+              ? 'http://127.0.0.1:11434'
+              : isGeminiFormat
+                ? 'https://generativelanguage.googleapis.com/v1beta'
+                : 'https://api.deepseek.com';
+            text.setPlaceholder(placeholder).setValue(this.plugin.settings.ai.customModel.baseUrl).onChange(async (value) => {
               this.plugin.settings.ai.customModel.baseUrl = value.trim();
               await this.plugin.saveSettings();
+              this.updateUrlValidationNote(customBody, value.trim(), customApiFormat);
             });
+            window.setTimeout(() => this.updateUrlValidationNote(customBody, customModelBaseUrl, customApiFormat), 50);
           });
+
+        if (!isOllamaFormat) {
+          const cachedModels = isGeminiFormat
+            ? this.cachedCustomGeminiModels
+            : this.cachedCustomOpenAIModels;
+          const cachedModelsBaseUrl = isGeminiFormat
+            ? this.cachedCustomGeminiModelsBaseUrl
+            : this.cachedCustomOpenAIModelsBaseUrl;
+          const cachedModelsError = isGeminiFormat
+            ? this.cachedCustomGeminiModelsError
+            : this.cachedCustomOpenAIModelsError;
+          const modelsAreFresh = cachedModelsBaseUrl === customModelBaseUrl;
+
+          const detectedModelsDesc = cachedModelsError
+            ? `${t('Choose a detected model to fill the model field.')} ${cachedModelsError}`.trim()
+            : t('Choose a detected model to fill the model field.');
+
+          const baseUrlDesc = customModelBaseUrl
+            ? `${t('Fetch available models from your server.')}`
+            : `${t('Enter a valid API base URL first, then fetch available models.')}`;
+
+          new Setting(customBody)
+            .setName(`${t('Detected Models')} (${modelsAreFresh ? cachedModels.length : '?'})`)
+            .setDesc(modelsAreFresh && cachedModels.length > 0 ? detectedModelsDesc : baseUrlDesc)
+            .addDropdown((dropdown) => {
+              dropdown.addOption('', t('Select a detected model'));
+
+              if (modelsAreFresh) {
+                cachedModels.forEach((modelName) => {
+                  dropdown.addOption(modelName, modelName);
+                });
+              }
+
+              const currentModel = this.plugin.settings.ai.customModel.model.trim();
+              if (currentModel && !(modelsAreFresh && cachedModels.includes(currentModel))) {
+                dropdown.addOption(currentModel, currentModel);
+              }
+
+              dropdown.setValue(modelsAreFresh && cachedModels.includes(currentModel) ? currentModel : '');
+              dropdown.onChange(async (value) => {
+                if (!value) {
+                  return;
+                }
+
+                this.plugin.settings.ai.customModel.model = value;
+                await this.plugin.saveSettings();
+                this.display();
+              });
+            })
+            .addButton((button) => {
+              button.setButtonText(t('Get Models')).onClick(async () => {
+                button.setDisabled(true);
+                button.setButtonText(t('Loading...'));
+                if (isGeminiFormat) {
+                  await this.refreshCustomGeminiModels();
+                } else {
+                  await this.refreshCustomOpenAIModels();
+                }
+              });
+            });
+        }
 
         new Setting(customBody)
           .setName(t('Custom Model Name'))
-          .setDesc(t('Model identifier used for inline completion and rewrite requests.'))
+          .setDesc(isGeminiFormat
+            ? t('Gemini model example: gemini-2.5-flash')
+            : isOllamaFormat
+              ? t('Model identifier used for inline completion and rewrite requests.')
+              : t('DeepSeek models: deepseek-v4-flash or deepseek-v4-pro'))
           .addText((text) => {
-            text.setPlaceholder(isOllamaFormat ? 'qwen2.5:7b' : 'gpt-4o-mini').setValue(this.plugin.settings.ai.customModel.model).onChange(async (value) => {
+            const placeholder = isOllamaFormat
+              ? 'qwen2.5:7b'
+              : isGeminiFormat
+                ? 'gemini-2.5-flash'
+                : 'deepseek-v4-flash';
+            text.setPlaceholder(placeholder).setValue(this.plugin.settings.ai.customModel.model).onChange(async (value) => {
               this.plugin.settings.ai.customModel.model = value.trim();
               await this.plugin.saveSettings();
             });
@@ -2129,13 +3792,13 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         }
 
         new Setting(customBody)
-          .setName(t('Custom API Key'))
+          .setName(isGeminiFormat ? t('Gemini API Key') : t('Custom API Key'))
           .setDesc(apiKeyDesc)
           .addText((text) => {
             text.inputEl.type = 'password';
             text.setPlaceholder(this.plugin.aiManager.hasCustomModelApiKey()
               ? t('Stored securely')
-              : (isOllamaFormat ? t('Optional') : t('Enter API key')));
+              : isGeminiFormat ? t('Required') : t('Optional'))
             text.setValue('').onChange(async (value) => {
               if (value.trim()) {
                 this.plugin.aiManager.saveCustomModelApiKey(value);
@@ -2187,6 +3850,102 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           });
       }
 
+      const frontmatterPrompt = this.plugin.settings.ai.frontmatterPrompt || createDefaultFrontmatterPromptSettings();
+      this.plugin.settings.ai.frontmatterPrompt = frontmatterPrompt;
+      const frontmatterBody = createCard({
+        title: t('Frontmatter Generation'),
+        desc: t('Choose whether frontmatter is generated automatically from folder patterns or with a custom prompt.'),
+        collapsible: true,
+        open: frontmatterPrompt.mode === 'custom',
+      });
+
+      new Setting(frontmatterBody)
+        .setName(t('Frontmatter Mode'))
+        .setDesc(t('Auto mode detects sibling-note frontmatter conventions. Custom mode applies your property list and prompt template.'))
+        .addDropdown((dropdown) => {
+          dropdown
+            .addOption('auto', t('Auto detect from folder'))
+            .addOption('custom', t('Custom prompt'))
+            .setValue(frontmatterPrompt.mode || 'auto')
+            .onChange(async (value) => {
+              this.plugin.settings.ai.frontmatterPrompt.mode = value === 'custom' ? 'custom' : 'auto';
+              await this.plugin.saveSettings();
+              this.display();
+            });
+        });
+
+      if (frontmatterPrompt.mode !== 'custom') {
+        frontmatterBody.createDiv({
+          cls: 'editing-toolbar-ai-note',
+          text: t('Auto mode will follow frontmatter keys and examples from sibling notes in the same folder.'),
+        });
+      } else {
+        const frontmatterVariablesInfo = frontmatterBody.createDiv({ cls: 'setting-item-description' });
+        frontmatterVariablesInfo.setCssStyles({ marginBottom: '12px' });
+        frontmatterVariablesInfo.setCssStyles({ padding: '8px 12px' });
+        frontmatterVariablesInfo.setCssStyles({ background: 'var(--background-secondary)' });
+        frontmatterVariablesInfo.setCssStyles({ borderRadius: '6px' });
+        frontmatterVariablesInfo.setCssStyles({ fontSize: '12px' });
+        safeSetInnerHTML(frontmatterVariablesInfo, [
+          '<strong>' + t('Available Variables') + ':</strong><br>',
+          '<code>{note}</code> - ' + t('Full document content') + ' | ',
+          '<code>{properties}</code> - ' + t('Property List') + ' | ',
+          '<code>{language}</code> - ' + t('Output Language'),
+        ].join(''));
+
+        new Setting(frontmatterBody)
+          .setName(t('Property List'))
+          .setDesc(t('One YAML property per line. Add a short instruction after a colon.'))
+          .addTextArea((text) => {
+            text
+              .setValue(frontmatterPrompt.properties)
+              .onChange(async (value) => {
+                this.plugin.settings.ai.frontmatterPrompt.properties = value;
+                await this.plugin.saveSettings();
+              });
+            text.inputEl.setCssStyles({ width: '100%' });
+            text.inputEl.setCssStyles({ minHeight: '100px' });
+          });
+
+        new Setting(frontmatterBody)
+          .setName(t('Output Language'))
+          .setDesc(t('Use "auto" to follow the current note language, or enter a specific language.'))
+          .addText((text) => {
+            text
+              .setPlaceholder('auto')
+              .setValue(frontmatterPrompt.language)
+              .onChange(async (value) => {
+                this.plugin.settings.ai.frontmatterPrompt.language = value.trim() || 'auto';
+                await this.plugin.saveSettings();
+              });
+          });
+
+        new Setting(frontmatterBody)
+          .setName(t('Prompt Template'))
+          .setDesc(t('Available placeholders: {note}, {properties}, {language}.'))
+          .addTextArea((text) => {
+            text
+              .setValue(frontmatterPrompt.prompt)
+              .onChange(async (value) => {
+                this.plugin.settings.ai.frontmatterPrompt.prompt = value;
+                await this.plugin.saveSettings();
+              });
+            text.inputEl.setCssStyles({ width: '100%' });
+            text.inputEl.setCssStyles({ minHeight: '180px' });
+          });
+
+        new Setting(frontmatterBody)
+          .addButton((button) => {
+            button
+              .setButtonText(t('Reset Frontmatter Prompt'))
+              .onClick(async () => {
+                this.plugin.settings.ai.frontmatterPrompt = createDefaultFrontmatterPromptSettings();
+                await this.plugin.saveSettings();
+                new Notice(t('Frontmatter prompt reset to default'));
+                this.display();
+              });
+          });
+      }
       const templatesBody = createCard({
         title: t('Custom Prompt Templates'),
         desc: t('Manage quick-access templates for custom AI prompts'),
@@ -2195,12 +3954,12 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       });
 
       const variablesInfo = templatesBody.createDiv({ cls: 'setting-item-description' });
-      variablesInfo.style.marginBottom = '12px';
-      variablesInfo.style.padding = '8px 12px';
-      variablesInfo.style.background = 'var(--background-secondary)';
-      variablesInfo.style.borderRadius = '6px';
-      variablesInfo.style.fontSize = '12px';
-      variablesInfo.innerHTML = `
+      variablesInfo.setCssStyles({ marginBottom: '12px' });
+      variablesInfo.setCssStyles({ padding: '8px 12px' });
+      variablesInfo.setCssStyles({ background: 'var(--background-secondary)' });
+      variablesInfo.setCssStyles({ borderRadius: '6px' });
+      variablesInfo.setCssStyles({ fontSize: '12px' });
+      safeSetInnerHTML(variablesInfo, `
         <strong>${t('Available Variables')}:</strong><br>
         <code>{{selection}}</code> - ${t('Selected text')} |
         <code>{{file:path}}</code> - ${t('Document path')} |
@@ -2210,11 +3969,11 @@ export class editingToolbarSettingTab extends PluginSettingTab {
         <code>{{datetime}}</code> - ${t('Date and time')} |
         <code>{{vault:name}}</code> - ${t('Vault name')}<br>
         <strong>${t('Linked note references')}:</strong> ${t('Use [[note name]] to reference the content of other notes.')}
-      `;
+      `);
 
       const templates = this.plugin.settings.ai.customPromptTemplates || [];
       templates.forEach((template, index) => {
-        const setting = new Setting(templatesBody)
+        new Setting(templatesBody)
           .setName(template.name)
           .setDesc(template.prompt.length > 80 ? template.prompt.substring(0, 80) + '...' : template.prompt)
           .addButton((button) => {
@@ -2239,6 +3998,24 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       new Setting(templatesBody)
         .addButton((button) => {
           button
+            .setButtonText(t('Reset Default Templates'))
+            .setWarning()
+            .onClick(() => {
+              ConfirmModal.show(this.app, {
+                title: t('Reset Default Templates'),
+                message: t('Replace all custom prompt templates with the defaults for the current language? This cannot be undone.'),
+                confirmText: t('Reset Default Templates'),
+                onConfirm: async () => {
+                  this.plugin.settings.ai.customPromptTemplates = getDefaultCustomPromptTemplates();
+                  await this.plugin.saveSettings();
+                  new Notice(t('Custom prompt templates reset to current language defaults.'));
+                  this.display();
+                },
+              });
+            });
+        })
+        .addButton((button) => {
+          button
             .setButtonText(t('Add Template'))
             .setCta()
             .onClick(() => {
@@ -2248,7 +4025,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
     }
   }
 
-  private openTemplateEditor(template: any | null, index: number): void {
+  private openTemplateEditor(template: CustomPromptTemplate | null, index: number): void {
     const modal = new Modal(this.app);
     modal.titleEl.setText(template ? t('Edit Template') : t('Add Template'));
 
@@ -2265,7 +4042,7 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           .onChange((value) => {
             nameValue = value;
           });
-        text.inputEl.style.width = '100%';
+        text.inputEl.setCssStyles({ width: '100%' });
       });
 
     new Setting(contentEl)
@@ -2277,8 +4054,8 @@ export class editingToolbarSettingTab extends PluginSettingTab {
           .onChange((value) => {
             promptValue = value;
           });
-        text.inputEl.style.width = '100%';
-        text.inputEl.style.minHeight = '120px';
+        text.inputEl.setCssStyles({ width: '100%' });
+        text.inputEl.setCssStyles({ minHeight: '120px' });
       });
 
     new Setting(contentEl)
@@ -2329,10 +4106,10 @@ export class editingToolbarSettingTab extends PluginSettingTab {
   private displayImportExportSettings(containerEl: HTMLElement): void {
     // 添加样式
     const importExportContainer = containerEl.createDiv('import-export-container');
-    importExportContainer.style.padding = '16px';
-    importExportContainer.style.borderRadius = '8px';
-    importExportContainer.style.backgroundColor = 'var(--background-secondary)';
-    importExportContainer.style.marginBottom = '20px';
+    importExportContainer.setCssStyles({ padding: '16px' });
+    importExportContainer.setCssStyles({ borderRadius: '8px' });
+    importExportContainer.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+    importExportContainer.setCssStyles({ marginBottom: '20px' });
     // 导出设置
     new Setting(importExportContainer)
       .setName(t('Export Configuration'))
@@ -2357,47 +4134,45 @@ export class editingToolbarSettingTab extends PluginSettingTab {
       );
     // 添加说明
     const infoDiv = containerEl.createDiv('import-export-info');
-    infoDiv.style.marginTop = '20px';
-    infoDiv.style.padding = '16px';
-    infoDiv.style.borderRadius = '8px';
-    infoDiv.style.backgroundColor = 'var(--background-secondary)';
-    infoDiv.createEl('h3', {
-      text: t('Usage Instructions'),
-      cls: 'import-export-heading'
-    }).style.marginTop = '0';
+    infoDiv.setCssStyles({ marginTop: '20px' });
+    infoDiv.setCssStyles({ padding: '16px' });
+    infoDiv.setCssStyles({ borderRadius: '8px' });
+    infoDiv.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
+    const usageHeading = new Setting(infoDiv).setName(t('Usage Instructions')).setHeading();
+    usageHeading.nameEl.addClass('import-export-heading');
+    usageHeading.nameEl.setCssStyles({ marginTop: '0' });
 
     const ul = infoDiv.createEl('ul');
-    ul.style.paddingLeft = '20px';
+    ul.setCssStyles({ paddingLeft: '20px' });
     ul.createEl('li', { text: t('Export: Generate a JSON configuration that you can save or share.')});
     ul.createEl('li', { text: t('Import: Paste a previously exported JSON configuration.')});
     // 添加社区分享链接
     const communityDiv = containerEl.createDiv('community-share-container');
-    communityDiv.style.marginTop = '20px';
-    communityDiv.style.padding = '16px';
-    communityDiv.style.borderRadius = '8px';
-    communityDiv.style.backgroundColor = 'rgba(var(--color-green-rgb), 0.1)';
-    communityDiv.style.border = '1px solid rgba(var(--color-green-rgb), 0.3)';
-    communityDiv.createEl('h3', {
-      text: t('Join the Community'),
-      cls: 'community-heading'
-    }).style.marginTop = '0';
+    communityDiv.setCssStyles({ marginTop: '20px' });
+    communityDiv.setCssStyles({ padding: '16px' });
+    communityDiv.setCssStyles({ borderRadius: '8px' });
+    communityDiv.setCssStyles({ backgroundColor: 'rgba(var(--color-green-rgb), 0.1)' });
+    communityDiv.setCssStyles({ border: '1px solid rgba(var(--color-green-rgb), 0.3)' });
+    const communityHeading = new Setting(communityDiv).setName(t('Join the Community')).setHeading();
+    communityHeading.nameEl.addClass('community-heading');
+    communityHeading.nameEl.setCssStyles({ marginTop: '0' });
 
     const shareLink = communityDiv.createEl('p');
-    shareLink.innerHTML = t('Share your toolbar settings and styles in our') + ' <a href="https://github.com/PKM-er/obsidian-editing-toolbar/discussions/categories/show-and-tell" target="_blank" rel="noopener noreferrer">Show and Tell</a> ';
-    const shareNote = communityDiv.createEl('p', {
+    safeSetInnerHTML(shareLink, t('Share your toolbar settings and styles in our') + ' <a href="https://github.com/PKM-er/obsidian-editing-toolbar/discussions/categories/show-and-tell" target="_blank" rel="noopener noreferrer">Show and Tell</a> ');
+    communityDiv.createEl('p', {
       text: t('Get inspired by what others have created or showcase your own customizations.')
     });
     // 添加警告
     const warningDiv = containerEl.createDiv('import-export-warning');
-    warningDiv.style.marginTop = '20px';
-    warningDiv.style.padding = '16px';
-    warningDiv.style.borderRadius = '8px';
-    warningDiv.style.backgroundColor = 'rgba(var(--color-red-rgb), 0.1)';
-    warningDiv.style.border = '1px solid rgba(var(--color-red-rgb), 0.3)';
+    warningDiv.setCssStyles({ marginTop: '20px' });
+    warningDiv.setCssStyles({ padding: '16px' });
+    warningDiv.setCssStyles({ borderRadius: '8px' });
+    warningDiv.setCssStyles({ backgroundColor: 'rgba(var(--color-red-rgb), 0.1)' });
+    warningDiv.setCssStyles({ border: '1px solid rgba(var(--color-red-rgb), 0.3)' });
     warningDiv.createEl('p', {
       text: t('Warning: Importing configuration will overwrite your current settings. Consider exporting your current configuration first as a backup.'),
       cls: 'warning-text'
-    }).style.margin = '0';
+    }).setCssStyles({ margin: '0' });
   }
   private aestheticStyleMap: { [key: string]: string } = {
     default: "editingToolbarDefaultAesthetic",
